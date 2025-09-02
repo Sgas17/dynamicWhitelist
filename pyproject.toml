@@ -1,0 +1,28 @@
+[project]
+name = "dynamicwhitelist"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ccxt>=4.5.2",
+    "nats-py>=2.11.0",
+    "pytest>=8.4.1",
+    "redis>=6.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.12.11",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "."
+]
+testpaths = [
+    "test"
+]
+asyncio_mode = "auto"

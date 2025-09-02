@@ -1,17 +1,31 @@
-# CLAUDE.md
+# dynamicWhitelist 
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+This project with create a dynamic whitelist of erc20 tokens to trade / monitor based on some pre-defined criteria.
 
-This is a dynamicWhitelist project - a standalone Docker container system that creates dynamic whitelists based on pre-defined criteria. The whitelists are published on Redis + NATS for other services to consume.
+This whitelist will be published to nats/redis for use by other services 
 
-## Current State
+It will run scripts periodically to 
+1 - update a database with any new tokens
+2 - update the database with any new pools 
 
-This appears to be an early-stage project with minimal codebase:
-- Contains only a README.md with basic project description
-- Has GitHub Actions workflow configured for Claude Code integration
-- No source code files, package configuration, or Docker files present yet
+for both Base and Ethereum chains but ultimately agnostically 
+
+
+
+
+
+
+
+##structure 
+
+- src/scripts #scripts to scrape blockchain data
+
+- src/processors #process scraped data
+
+- src/utils #helper functions for project
+
+- tests #project test suite
 
 ## GitHub Integration
 
