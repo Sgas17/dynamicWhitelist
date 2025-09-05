@@ -20,32 +20,32 @@ class BaseFetcher(CryoFetcher):
     """
     
     def __init__(self, rpc_url: Optional[str] = None, protocol_config: Optional['ProtocolConfig'] = None):
-    """Initialize Base fetcher."""
-    # Get RPC URL from config if not provided
-    if not rpc_url:
-        config = ConfigManager()
-        chain_config = config.chains.get_chain_config("base")
-        rpc_url = chain_config["rpc_url"]
-    
-    super().__init__("base", rpc_url)
-    
-    # Initialize protocol config
-    if protocol_config:
-        self.protocol_config = protocol_config
-    else:
-        from ..config.protocols import ProtocolConfig
-        self.protocol_config = ProtocolConfig()
-    
-    # Base L2-specific configurations
-    self.blocks_per_minute = 30  # ~2 second block time on Base
-    self.blocks_per_request = 10000  # Same as Ethereum for compatibility
-    
-    # Update cryo options for Base
-    self.cryo_options = [
-        "--rpc", rpc_url,
-        "--inner-request-size", str(self.blocks_per_request),
-        "--u256-types", "binary"
-    ]
+        """Initialize Base fetcher."""
+        # Get RPC URL from config if not provided
+        if not rpc_url:
+            config = ConfigManager()
+            chain_config = config.chains.get_chain_config("base")
+            rpc_url = chain_config["rpc_url"]
+        
+        super().__init__("base", rpc_url)
+        
+        # Initialize protocol config
+        if protocol_config:
+            self.protocol_config = protocol_config
+        else:
+            from ..config.protocols import ProtocolConfig
+            self.protocol_config = ProtocolConfig()
+        
+        # Base L2-specific configurations
+        self.blocks_per_minute = 30  # ~2 second block time on Base
+        self.blocks_per_request = 10000  # Same as Ethereum for compatibility
+        
+        # Update cryo options for Base
+        self.cryo_options = [
+            "--rpc", rpc_url,
+            "--inner-request-size", str(self.blocks_per_request),
+            "--u256-types", "binary"
+        ]
     
     async def calculate_block_range(self, hours_back: int) -> tuple[int, int]:
         """Calculate block range for Base L2."""
@@ -67,15 +67,12 @@ class BaseFetcher(CryoFetcher):
             FetchResult: Fetch operation result
         """
         try:
-            # Uniswap V3 deployment on Base - different from Ethereum
-            deployment_block = 1371680  # Base mainnet V3 deployment
-            factory_contracts = [
-                "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",  # Uniswap V3 on Base
-                "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",  # Panacake V3 on Base
-            ]
+            # Get unified V3 config (includes all forks: Uniswap, Sushiswap, PancakeSwap)
+            deployment_block = self.protocol_config.get_deployment_block("uniswap_v3", "base")
+            factory_contracts = self.protocol_config.get_factory_addresses("uniswap_v3", "base")
             
-            # PoolCreated event signature (same across chains)
-            pool_created_event = "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
+            # Get event hash from config
+            pool_created_event = self.protocol_config.get_event_hash("uniswap_v3_pool_created")
             
             # Determine start block
             start_block = deployment_block
@@ -136,12 +133,12 @@ class BaseFetcher(CryoFetcher):
             FetchResult: Fetch operation result
         """
         try:
-            # Aerodrome V3 deployment on Base
-            deployment_block = 13843704  # Approximate deployment block (to be updated with actual)
-            factory_contract = "0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A"
+            # Get Aerodrome config 
+            deployment_block = self.protocol_config.get_deployment_block("aerodrome", "base")
+            factory_contracts = self.protocol_config.get_factory_addresses("aerodrome", "base")
             
-            # Aerodrome V3 pool creation event signature
-            pool_created_event = "0xab0d57f0df537bb25e80245ef7748fa62353808c54d6e528a9dd20887aed9ac2"
+            # Get event hash from config
+            pool_created_event = self.protocol_config.get_event_hash("aerodrome_pool_created")
             
             # Determine start block
             start_block = deployment_block
@@ -167,7 +164,7 @@ class BaseFetcher(CryoFetcher):
             result = await self.fetch_logs(
                 start_block=start_block,
                 end_block=latest_block,
-                contracts=[factory_contract],
+                contracts=factory_contracts,
                 events=[pool_created_event],
                 output_dir=str(output_dir)
             )
@@ -202,12 +199,12 @@ class BaseFetcher(CryoFetcher):
             FetchResult: Fetch operation result
         """
         try:
-            # Uniswap V4 deployment on Base - same pool manager as Ethereum
-            deployment_block = 18000000  # Approximate V4 deployment on Base (to be updated)
-            pool_manager_contract = "0x000000000004444c5dc75cB358380D2e3dE08A90"
+            # Get V4 config
+            deployment_block = self.protocol_config.get_deployment_block("uniswap_v4", "base")
+            pool_manager_contracts = self.protocol_config.get_factory_addresses("uniswap_v4", "base")
             
-            # Initialize event signature (same across chains)
-            initialized_event = "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438"
+            # Get event hash from config
+            initialized_event = self.protocol_config.get_event_hash("uniswap_v4_initialized")
             
             # Determine start block
             start_block = deployment_block
@@ -233,7 +230,7 @@ class BaseFetcher(CryoFetcher):
             result = await self.fetch_logs(
                 start_block=start_block,
                 end_block=latest_block,
-                contracts=[pool_manager_contract],
+                contracts=pool_manager_contracts,
                 events=[initialized_event],
                 output_dir=str(output_dir)
             )
@@ -270,11 +267,12 @@ class BaseFetcher(CryoFetcher):
             FetchResult: Fetch operation result
         """
         try:
-            # Uniswap V4 pool manager contract (same as Ethereum)
-            pool_manager_contract = "0x000000000004444c5dc75cB358380D2e3dE08A90"
+            # Get V4 config
+            deployment_block = self.protocol_config.get_deployment_block("uniswap_v4", "base")
+            pool_manager_contracts = self.protocol_config.get_factory_addresses("uniswap_v4", "base")
             
-            # V4 ModifyLiquidity event signature (same across chains)
-            modify_liquidity_event = "0xf208f4912782fd25c7f114ca3723a2d5dd6f3bcc3ac8db5af63baa85f711d5ec"
+            # Get event hash from config
+            modify_liquidity_event = self.protocol_config.get_event_hash("uniswap_v4_modify_liquidity")
             
             # Determine start and end blocks
             if from_checkpoint:
@@ -287,14 +285,12 @@ class BaseFetcher(CryoFetcher):
                     # No checkpoint, use V4 deployment block + hours_back
                     start_block, end_block = await self.calculate_block_range(hours_back)
                     # Ensure we don't go before V4 deployment on Base
-                    v4_deployment = 18000000  # Approximate V4 deployment on Base
-                    start_block = max(start_block, v4_deployment)
+                    start_block = max(start_block, deployment_block)
             else:
                 # Use hours_back from latest block
                 start_block, end_block = await self.calculate_block_range(hours_back)
                 # Ensure we don't go before V4 deployment on Base
-                v4_deployment = 18000000
-                start_block = max(start_block, v4_deployment)
+                start_block = max(start_block, deployment_block)
             
             # Setup output directory
             if not output_dir:
@@ -310,7 +306,7 @@ class BaseFetcher(CryoFetcher):
             result = await self.fetch_logs(
                 start_block=start_block,
                 end_block=end_block,
-                contracts=[pool_manager_contract],
+                contracts=pool_manager_contracts,
                 events=[modify_liquidity_event],
                 output_dir=str(output_dir)
             )

@@ -20,103 +20,103 @@ class EthereumFetcher(CryoFetcher):
     """
     
     def __init__(self, rpc_url: Optional[str] = None, protocol_config: Optional['ProtocolConfig'] = None):
-    """Initialize Ethereum fetcher."""
-    # Get RPC URL from config if not provided
-    if not rpc_url:
-        config = ConfigManager()
-        chain_config = config.chains.get_chain_config("ethereum")
-        rpc_url = chain_config["rpc_url"]
-    
-    super().__init__("ethereum", rpc_url)
-    
-    # Initialize protocol config
-    if protocol_config:
-        self.protocol_config = protocol_config
-    else:
-        from ..config.protocols import ProtocolConfig
-        self.protocol_config = ProtocolConfig()
-    
-    # Ethereum-specific configurations
-    self.blocks_per_minute = 5  # ~12 second block time
-    self.blocks_per_request = 10000  # Larger chunks for Ethereum
-    
-    # Update cryo options for Ethereum
-    self.cryo_options = [
-        "--rpc", rpc_url,
-        "--inner-request-size", str(self.blocks_per_request),
-        "--u256-types", "binary"
-    ]
+        """Initialize Ethereum fetcher."""
+        # Get RPC URL from config if not provided
+        if not rpc_url:
+            config = ConfigManager()
+            chain_config = config.chains.get_chain_config("ethereum")
+            rpc_url = chain_config["rpc_url"]
+        
+        super().__init__("ethereum", rpc_url)
+        
+        # Initialize protocol config
+        if protocol_config:
+            self.protocol_config = protocol_config
+        else:
+            from ..config.protocols import ProtocolConfig
+            self.protocol_config = ProtocolConfig()
+        
+        # Ethereum-specific configurations
+        self.blocks_per_minute = 5  # ~12 second block time
+        self.blocks_per_request = 10000  # Larger chunks for Ethereum
+        
+        # Update cryo options for Ethereum
+        self.cryo_options = [
+            "--rpc", rpc_url,
+            "--inner-request-size", str(self.blocks_per_request),
+            "--u256-types", "binary"
+        ]
     
     async def calculate_block_range(self, hours_back: int) -> tuple[int, int]:
         """Calculate block range for Ethereum."""
         return await super().calculate_block_range(hours_back, self.blocks_per_minute)
     
     async def fetch_uniswap_v2_pools(
-    self, 
-    output_dir: Optional[str] = None,
-    from_checkpoint: bool = True
-) -> FetchResult:
-    """
-    Fetch Uniswap V2 pair creation events on Ethereum.
-    
-    Args:
-        output_dir: Output directory for data
-        from_checkpoint: If True, resume from last checkpoint, else from deployment
+        self, 
+        output_dir: Optional[str] = None,
+        from_checkpoint: bool = True
+    ) -> FetchResult:
+        """
+        Fetch Uniswap V2 pair creation events on Ethereum.
         
-    Returns:
-        FetchResult: Fetch operation result
-    """
-    try:
-        # Get unified V2 config (includes all forks: Uniswap, Sushiswap, PancakeSwap)
-        deployment_block = self.protocol_config.get_deployment_block("uniswap_v2", "ethereum")
-        factory_contracts = self.protocol_config.get_factory_addresses("uniswap_v2", "ethereum")
-        
-        # Get event hash from config
-        pair_created_event = self.protocol_config.get_event_hash("uniswap_v2_pair_created")
-        
-        # Determine start block
-        start_block = deployment_block
-        if from_checkpoint:
-            checkpoint_block = await self._get_last_processed_block("uniswap_v2_pools", output_dir)
-            if checkpoint_block:
-                start_block = checkpoint_block
-                
-        # Get latest block
-        latest_block = await self.get_latest_block()
-        
-        # Setup output directory
-        if not output_dir:
-            data_dir = Path(self.config.base.DATA_DIR)
-            output_dir = data_dir / self.chain / "uniswap_v2_paircreated_events"
-        
-        self.logger.info(f"Fetching Uniswap V2 pools from block {start_block} to {latest_block}")
-        
-        # Clean last file if resuming (handles partial data)
-        if from_checkpoint:
-            await self._cleanup_last_file(output_dir)
+        Args:
+            output_dir: Output directory for data
+            from_checkpoint: If True, resume from last checkpoint, else from deployment
             
-        result = await self.fetch_logs(
-            start_block=start_block,
-            end_block=latest_block,
-            contracts=factory_contracts,
-            events=[pair_created_event],
-            output_dir=str(output_dir)
-        )
-        
-        if result.success:
-            result.metadata.update({
-                "protocol": "uniswap_v2",
-                "event_type": "pair_created",
-                "checkpoint_used": from_checkpoint and checkpoint_block is not None,
-                "factory_addresses": factory_contracts
-            })
-        
-        return result
-        
-    except Exception as e:
-        error_msg = f"Uniswap V2 pool fetch failed: {str(e)}"
-        self.logger.exception(error_msg)
-        return FetchResult(success=False, error=error_msg)
+        Returns:
+            FetchResult: Fetch operation result
+        """
+        try:
+            # Get unified V2 config (includes all forks: Uniswap, Sushiswap, PancakeSwap)
+            deployment_block = self.protocol_config.get_deployment_block("uniswap_v2", "ethereum")
+            factory_contracts = self.protocol_config.get_factory_addresses("uniswap_v2", "ethereum")
+            
+            # Get event hash from config
+            pair_created_event = self.protocol_config.get_event_hash("uniswap_v2_pair_created")
+            
+            # Determine start block
+            start_block = deployment_block
+            if from_checkpoint:
+                checkpoint_block = await self._get_last_processed_block("uniswap_v2_pools", output_dir)
+                if checkpoint_block:
+                    start_block = checkpoint_block
+                    
+            # Get latest block
+            latest_block = await self.get_latest_block()
+            
+            # Setup output directory
+            if not output_dir:
+                data_dir = Path(self.config.base.DATA_DIR)
+                output_dir = data_dir / self.chain / "uniswap_v2_paircreated_events"
+            
+            self.logger.info(f"Fetching Uniswap V2 pools from block {start_block} to {latest_block}")
+            
+            # Clean last file if resuming (handles partial data)
+            if from_checkpoint:
+                await self._cleanup_last_file(output_dir)
+            
+            result = await self.fetch_logs(
+                start_block=start_block,
+                end_block=latest_block,
+                contracts=factory_contracts,
+                events=[pair_created_event],
+                output_dir=str(output_dir)
+            )
+            
+            if result.success:
+                result.metadata.update({
+                    "protocol": "uniswap_v2",
+                    "event_type": "pair_created",
+                    "checkpoint_used": from_checkpoint and checkpoint_block is not None,
+                    "factory_addresses": factory_contracts
+                })
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Uniswap V2 pool fetch failed: {str(e)}"
+            self.logger.exception(error_msg)
+            return FetchResult(success=False, error=error_msg)
     
     async def fetch_uniswap_v3_pools(
         self, 
