@@ -19,26 +19,33 @@ class BaseFetcher(CryoFetcher):
     Configured with Base L2-specific parameters and optimizations.
     """
     
-    def __init__(self, rpc_url: Optional[str] = None):
-        """Initialize Base fetcher."""
-        # Get RPC URL from config if not provided
-        if not rpc_url:
-            config = ConfigManager()
-            chain_config = config.chains.get_chain_config("base")
-            rpc_url = chain_config["rpc_url"]
-        
-        super().__init__("base", rpc_url)
-        
-        # Base L2-specific configurations
-        self.blocks_per_minute = 30  # ~2 second block time on Base
-        self.blocks_per_request = 10000  # Same as Ethereum for compatibility
-        
-        # Update cryo options for Base
-        self.cryo_options = [
-            "--rpc", rpc_url,
-            "--inner-request-size", str(self.blocks_per_request),
-            "--u256-types", "binary"
-        ]
+    def __init__(self, rpc_url: Optional[str] = None, protocol_config: Optional['ProtocolConfig'] = None):
+    """Initialize Base fetcher."""
+    # Get RPC URL from config if not provided
+    if not rpc_url:
+        config = ConfigManager()
+        chain_config = config.chains.get_chain_config("base")
+        rpc_url = chain_config["rpc_url"]
+    
+    super().__init__("base", rpc_url)
+    
+    # Initialize protocol config
+    if protocol_config:
+        self.protocol_config = protocol_config
+    else:
+        from ..config.protocols import ProtocolConfig
+        self.protocol_config = ProtocolConfig()
+    
+    # Base L2-specific configurations
+    self.blocks_per_minute = 30  # ~2 second block time on Base
+    self.blocks_per_request = 10000  # Same as Ethereum for compatibility
+    
+    # Update cryo options for Base
+    self.cryo_options = [
+        "--rpc", rpc_url,
+        "--inner-request-size", str(self.blocks_per_request),
+        "--u256-types", "binary"
+    ]
     
     async def calculate_block_range(self, hours_back: int) -> tuple[int, int]:
         """Calculate block range for Base L2."""
@@ -64,6 +71,7 @@ class BaseFetcher(CryoFetcher):
             deployment_block = 1371680  # Base mainnet V3 deployment
             factory_contracts = [
                 "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",  # Uniswap V3 on Base
+                "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",  # Panacake V3 on Base
             ]
             
             # PoolCreated event signature (same across chains)
