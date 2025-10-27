@@ -3,6 +3,7 @@ PostgreSQL storage implementation for the dynamic whitelist system.
 """
 
 import asyncio
+import json
 import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -20,6 +21,24 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+
+def normalize_address(address: Any) -> Optional[str]:
+    """
+    Normalize Ethereum address to lowercase for consistent storage.
+    
+    Args:
+        address: Address as string, bytes, or None
+        
+    Returns:
+        Lowercase address string or None
+    """
+    if address is None:
+        return None
+    if isinstance(address, bytes):
+        return address.hex().lower()
+    return str(address).lower()
 
 
 class PostgresStorage(StorageBase, TokenStorageInterface, PoolStorageInterface, TransactionManager):
@@ -457,7 +476,7 @@ class PostgresStorage(StorageBase, TokenStorageInterface, PoolStorageInterface, 
             raise DataError(f"Pool storage failed: {e}")
             
     async def store_pools_batch(self, pools: List[Dict[str, Any]], chain: str, protocol: str) -> int:
-        """Store multiple pools in batch using existing schema."""
+        """Store multiple pools in batch with normalized lowercase addresses."""
         if not self.pool:
             raise ConnectionError("Not connected to PostgreSQL")
             
@@ -466,12 +485,13 @@ class PostgresStorage(StorageBase, TokenStorageInterface, PoolStorageInterface, 
             
         table_name = self._get_pool_table_name(chain)
         
+        # Normalize all addresses to lowercase
         records = [
             (
-                pool['address'],
-                pool.get('factory'),
-                pool.get('asset0'),
-                pool.get('asset1'),
+                normalize_address(pool['address']),
+                normalize_address(pool.get('factory')),
+                normalize_address(pool.get('asset0')),
+                normalize_address(pool.get('asset1')),
                 None,  # asset2
                 None,  # asset3
                 pool.get('creation_block'),

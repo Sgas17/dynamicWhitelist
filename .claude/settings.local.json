@@ -1,13 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(/home/sam-sullivan/dynamic_whitelist/**)",
-      "Read(/home/sam-sullivan/dynamic_whitelist/**)",
-      "Read(/home/sam-sullivan/dynamic_whitelist/config/**)",
-      "Read(/home/sam-sullivan/dynamic_whitelist/processors/**)",
-      "Read(/home/sam-sullivan/dynamic_whitelist/**)",
-      "Read(/home/sam-sullivan/dynamic_whitelist/processors/**)",
-      "Read(/home/sam-sullivan/dynamic_whitelist/docs/**)",
+      "Read(/home/sam-sullivan/dynamicWhitelist/**)",
+    
       "Bash(grep:*)",
       "Bash(ls:*)",
       "Bash(source:*)",
@@ -24,13 +19,14 @@
       "Bash(python:*)",
       "Bash(python -m pytest:*)",
       "Bash(uv run:*)",
-      "Bash(uv run pytest:*",
+      "Bash(uv run pytest:*)",
       "Bash(python3 -m pytest:*)",
       "WebFetch(domain:*)",
       "Bash(gh issue view:*)",
       "WebFetch(domain:docs.anthropic.com)",
       "mcp__serena",
-      "mcp__context7"
+      "mcp__context7",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

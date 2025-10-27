@@ -241,7 +241,7 @@ class EthereumFetcher(CryoFetcher):
                 result.metadata.update({
                     "protocol": "uniswap_v4",
                     "event_type": "initialized",
-                    "pool_manager_address": pool_manager_contract,
+                    "pool_manager_address": pool_manager_contracts,
                     "deployment_block": deployment_block
                 })
             

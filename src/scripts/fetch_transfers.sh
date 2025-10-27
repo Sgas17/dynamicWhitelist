@@ -3,16 +3,18 @@
 # Check if number of hours argument is provided
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <number_of_hours>"
-    echo "Example: $0 24    # Fetch transfers for the last 24 hours"
+    echo "Example: $0 1    # Fetch transfers for the last hour"
     exit 1
 fi
 
-MINUTES=$1
-BLOCKS_PER_MINUTE=5  # Approximate number of blocks per minute (12s block time)
-BLOCKS_TO_FETCH=$((MINUTES * BLOCKS_PER_MINUTE))
+HOURS=$1
+BLOCKS_PER_HOUR=300  # Approximately 300 blocks per hour (12s block time)
+BLOCKS_TO_FETCH=$((HOURS * BLOCKS_PER_HOUR))
 
-# Force use of local data directory, ignore any environment variable
-DATA_DIR="/home/sam-sullivan/dynamic_whitelist/data"
+# Use current project data directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+DATA_DIR="${PROJECT_ROOT}/data"
 
 CHAIN=ethereum
 RPC_URL=http://100.104.193.35:8545
@@ -88,8 +90,8 @@ fi
 
 # Process the transfers
 echo "Processing collected transfer data..."
-cd /home/sam-sullivan/dynamic_whitelist
-uv run processors/latest_transfers_processor.py
+cd "${PROJECT_ROOT}"
+uv run python src/scripts/run_transfer_processor.py
 
 
 

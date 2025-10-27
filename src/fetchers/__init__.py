@@ -22,7 +22,15 @@ try:
 except ImportError:
     pass
 
-# Supporting two chains: Ethereum mainnet and Base L2
+# Add exchange fetchers
+try:
+    from .exchange_fetchers import HyperliquidFetcher, BinanceFetcher
+    _available_fetchers['hyperliquid'] = HyperliquidFetcher
+    _available_fetchers['binance'] = BinanceFetcher
+except ImportError:
+    pass
+
+# Supporting blockchain and exchange data sources
 
 __all__ = [
     'BaseFetcher',

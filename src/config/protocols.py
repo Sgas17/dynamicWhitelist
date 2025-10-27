@@ -17,13 +17,14 @@ class ProtocolConfig(BaseConfig):
     UNISWAP_V3_POOL_CREATED_EVENT: str = "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
     UNISWAP_V3_MINT_EVENT: str = "0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde"
     UNISWAP_V3_BURN_EVENT: str = "0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c"
-    UNISWAP_V4_INITIALIZED_EVENT: str = "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438"
+    UNISWAP_V4_INITIALIZED_EVENT: str = "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438"  # Confirmed on-chain
     UNISWAP_V4_MODIFY_LIQUIDITY_EVENT: str = "0xf208f4912782fd25c7f114ca3723a2d5dd6f3bcc3ac8db5af63baa85f711d5ec"
-    AERODROME_POOL_CREATED_EVENT: str = "0xab0d57f0df537bb25e80245ef7748fa62353808c54d6e528a9dd20887aed9ac2"
+    AERODROME_V2_POOL_CREATED_EVENT: str = "0x2128d88d14c80cb081c1252a5acff7a264671bf199ce226b53788fb26065005e"
+    AERODROME_V3_POOL_CREATED_EVENT: str = "0xab0d57f0df537bb25e80245ef7748fa62353808c54d6e528a9dd20887aed9ac2"
+
+
     
-    # Pool Manager Addresses (shared across chains for V4)
-    UNISWAP_V4_POOL_MANAGER: str = "0x000000000004444c5dc75cB358380D2e3dE08A90"
-    
+   
     @property 
     def uniswap_v2_config(self) -> Dict[str, Dict]:
         """Uniswap V2 configuration by chain."""
@@ -40,11 +41,8 @@ class ProtocolConfig(BaseConfig):
             },
             "base": {
                 "factory_addresses": [
-                    "0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",  # Uniswap V2
-                    "0x71524B4f93c58fcbF659783284E38825f0622859",  # Sushiswap V2
-                    "0x02a84c5b5cd8d987671d4ff0e17ff5d862e4c0a2",  # PancakeSwap V2
-                ],
-                "router_address": "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
+                    ],
+                "router_address": "",
                 "deployment_block": 6601915,
                 "fee": 3000
             },
@@ -66,7 +64,7 @@ class ProtocolConfig(BaseConfig):
         return {
             "ethereum": {
                 "factory_addresses": ["0x1F98431c8aD98523631AE4a59f267346ea31F984",
-                "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865"],
+                "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865","0xbACEB8eC6b9355Dfc0269C18bac9d6E2Bdc29C4F"],
                 "deployment_block": 12369621,
                 "pool_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
                 "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
@@ -91,77 +89,44 @@ class ProtocolConfig(BaseConfig):
         """Uniswap V4 configuration by chain."""
         return {
             "ethereum": {
-                "pool_manager": self.UNISWAP_V4_POOL_MANAGER,
-                "deployment_block": 20000000  # Update with actual block when deployed
+                "pool_manager": "0x000000000004444c5dc75cB358380D2e3dE08A90",
+                "deployment_block": 21688329  # Update with actual block when deployed
             },
             "base": {
-                "pool_manager": self.UNISWAP_V4_POOL_MANAGER,
-                "deployment_block": 20000000  # Update with actual block when deployed
+                "pool_manager": "0x498581fF718922c3f8e6A244956aF099B2652b2b",
+                "deployment_block": 25350988  # Update with actual block when deployed
             },
             "arbitrum": {
-                "pool_manager": self.UNISWAP_V4_POOL_MANAGER,
-                "deployment_block": 20000000  # Update with actual block when deployed
+                "pool_manager": "0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32",
+                "deployment_block": 297842872  # Update with actual block when deployed
             }
         }
     
+    
+
     @property
-    def sushiswap_config(self) -> Dict[str, Dict]:
-        """Sushiswap configuration by chain."""
+    def aerodrome_v2_config(self) -> Dict[str, Dict]:
+        """Aerodrome V2 configuration by chain."""
         return {
-            "ethereum": {
-                "v2_factory": "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac",
-                "v3_factory": "0xbACEB8eC6b9355Dfc0269C18bac9d6E2Bdc29C4F",
-                "deployment_block": 10794229,
-                "router": "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F"
-            },
             "base": {
-                "v2_factory": "0x71524B4f93c58fcbF659783284E38825f0622859",
-                "v3_factory": "0xc35DADB65012eC5796536bD9864eD8773aBc74C4",
-                "deployment_block": 1371680,
-                "router": "0x6BDED42c6DA8FBf0d2bA55B2fa120C5e0c8D7891"
-            },
-            "arbitrum": {
-                "v2_factory": "0xc35DADB65012eC5796536bD9864eD8773aBc74C4",
-                "v3_factory": "0x1af415a1EbA07a4986a52B6f2e7dE7003D82231e",
-                "deployment_block": 70,
-                "router": "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"
+                "factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
+                "deployment_block": 3200559,
+                "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"
             }
         }
+
     
     @property
-    def pancakeswap_config(self) -> Dict[str, Dict]:
-        """PancakeSwap configuration by chain."""
-        return {
-            "ethereum": {
-                "v2_factory": "0x1097053Fd2ea711dad45caCcc45EfF7548fCB362",
-                "v3_factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-                "deployment_block": 15614590,
-                "router": "0xEfF92A263d31888d860bD50809A8D171709b7b1c"
-            },
-            "base": {
-                "v2_factory": "0x02a84c5b5cd8d987671d4ff0e17ff5d862e4c0a2",
-                "v3_factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-                "deployment_block": 6601915,
-                "router": "0x678Aa4bF4E210cf2166753e054d5b7c31cc7fa86"
-            },
-            "arbitrum": {
-                "v2_factory": "0x02a84c5b5cd8d987671d4ff0e17ff5d862e4c0a2",
-                "v3_factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-                "deployment_block": 150442611,
-                "router": "0x8cFe327CEc66d1C090Dd72bd0FF11d690C33a2Eb"
-            }
-        }
-    
-    @property
-    def aerodrome_config(self) -> Dict[str, Dict]:
+    def aerodrome_v3_config(self) -> Dict[str, Dict]:
         """Aerodrome configuration by chain (Base-specific)."""
         return {
             "base": {
                 "factory": "0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A",
-                "deployment_block": 6601915,
-                "router": "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43"
+                "deployment_block": 13843704,
+                "router": "0x6Cb442acF35158D5eDa88fe602221b67B400Be3E"
             }
         }
+    
     
     @property
     def supported_protocols(self) -> List[str]:
@@ -170,21 +135,24 @@ class ProtocolConfig(BaseConfig):
             "uniswap_v2",  # Includes all V2 forks (Sushiswap V2, PancakeSwap V2)
             "uniswap_v3",  # Includes all V3 forks (Sushiswap V3, PancakeSwap V3)
             "uniswap_v4",
-            "aerodrome"    # Base-specific protocol with different architecture
+            "aerodrome_v2",
+            "aerodrome_v3"    # Base-specific protocol with different architecture
         ]
     
     def get_protocol_config(self, protocol: str, chain: str) -> Dict:
         """Get configuration for a specific protocol on a specific chain."""
         # All V2 forks use the same architecture and events
-        if protocol in ["uniswap_v2", "sushiswap_v2", "pancakeswap_v2"] or protocol.startswith("uniswap_v2"):
+        if protocol.startswith("uniswap_v2"):
             return self.uniswap_v2_config.get(chain, {})
         # All V3 forks use the same architecture and events  
-        elif protocol in ["uniswap_v3", "sushiswap_v3", "pancakeswap_v3"] or protocol.startswith("uniswap_v3"):
+        elif protocol.startswith("uniswap_v3"):
             return self.uniswap_v3_config.get(chain, {})
         elif protocol.startswith("uniswap_v4"):
             return self.uniswap_v4_config.get(chain, {})
-        elif protocol.startswith("aerodrome"):
-            return self.aerodrome_config.get(chain, {})
+        elif protocol.startswith("aerodrome_v2"):
+            return self.aerodrome_v2_config.get(chain, {})
+        elif protocol.startswith("aerodrome_v3"):
+            return self.aerodrome_v3_config.get(chain, {})
         else:
             raise ValueError(f"Unsupported protocol: {protocol}")
     
@@ -195,8 +163,6 @@ class ProtocolConfig(BaseConfig):
         # Handle different config structures
         if "factory_addresses" in config:
             return config["factory_addresses"]
-        elif "v2_factory" in config and "v3_factory" in config:
-            return [config["v2_factory"], config["v3_factory"]]
         elif "factory" in config:
             return [config["factory"]]
         elif "pool_manager" in config:
@@ -214,7 +180,13 @@ class ProtocolConfig(BaseConfig):
             "uniswap_v3_burn": self.UNISWAP_V3_BURN_EVENT,
             "uniswap_v4_initialized": self.UNISWAP_V4_INITIALIZED_EVENT,
             "uniswap_v4_modify_liquidity": self.UNISWAP_V4_MODIFY_LIQUIDITY_EVENT,
-            "aerodrome_pool_created": self.AERODROME_POOL_CREATED_EVENT
+            # V4 uses single ModifyLiquidity event (not separate mint/burn)
+            "uniswap_v4_mint": self.UNISWAP_V4_MODIFY_LIQUIDITY_EVENT,
+            "uniswap_v4_burn": self.UNISWAP_V4_MODIFY_LIQUIDITY_EVENT,
+            "aerodrome_v2_pool_created": self.AERODROME_V2_POOL_CREATED_EVENT,
+            "aerodrome_v3_pool_created": self.AERODROME_V3_POOL_CREATED_EVENT,
+            "aerodrome_v3_mint": self.UNISWAP_V3_MINT_EVENT,# aerodrome v3 uses the same mint event as uniswap v3
+            "aerodrome_v3_burn": self.UNISWAP_V3_BURN_EVENT # aerodrome v3 uses the same burn event as uniswap v3
         }
         if event_type not in event_map:
             raise ValueError(f"Unknown event type: {event_type}")

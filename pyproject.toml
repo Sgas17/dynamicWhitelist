@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "asyncpg>=0.30.0",
+    "beautifulsoup4>=4.14.2",
     "ccxt>=4.5.2",
     "degenbot==0.5.0a2",
     "eth-abi>=5.2.0",

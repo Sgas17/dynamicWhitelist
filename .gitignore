@@ -1,4 +1,109 @@
+# Environment & Secrets
 .env
-n.mcp.json
-__pycache__/
 .env*
+n.mcp.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+.tox/
+
+# Type Checking & Linting
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# Data & Runtime Files
+data/
+*.parquet
+*.csv
+*.json.gz
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude & Serena
+.serena/memories/
+.claude/hooks/
+.claude/settings.json
+.claude/settings.local.json
+
+# Temporary Files
+*.tmp
+*.temp
+tmp/
+temp/
+*.bak
+
+# Analysis & Debug Outputs
+analysis_*.json
+analysis_*.txt
+debug_*.py
+test_alloy_reserves.rs
+
+# Archived/Old Files
+archived_tests/
+old/
+backup/
+
+# Compiled Rust (if building locally)
+target/
+Cargo.lock
+
+# Node modules (if any)
+node_modules/
+
+# Documentation builds
+docs/_build/
+site/

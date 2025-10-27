@@ -7,8 +7,7 @@ KISS: Simple wrapper around cryo command-line tool.
 import subprocess
 import asyncio
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-import json
+from typing import List, Optional
 
 from .base import BaseFetcher, FetchResult, FetchError
 from ..config.manager import ConfigManager
@@ -30,7 +29,8 @@ class CryoFetcher(BaseFetcher):
         self.blocks_per_request = 10000
         self.cryo_options = [
             "--rpc", rpc_url,
-            "--inner-request-size", str(self.blocks_per_request),
+            "--inner-request-size", 
+            str(self.blocks_per_request),
             "--u256-types", "binary"
         ]
     
@@ -199,8 +199,8 @@ class CryoFetcher(BaseFetcher):
             blocks_to_fetch = minutes * blocks_per_minute
             start_block = latest_block - blocks_to_fetch
             
-            # ERC20 Transfer event signature
-            transfer_event = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            # ERC20 Transfer event signature from protocol config
+            transfer_event = self.config.protocols.get_event_hash("erc20_transfer")
             
             # Setup output directory
             if not output_dir:
@@ -280,13 +280,10 @@ class CryoFetcher(BaseFetcher):
             FetchResult: Fetch operation result
         """
         try:
-            # Get protocol configuration
-            protocol_config = self.config.get_protocol_chain_config(protocol, self.chain)
-            
-            # Get factory addresses and deployment block
-            factory_addresses = protocol_config.get("factory_addresses", [])
+            # Get protocol configuration using centralized config
+            factory_addresses = self.config.protocols.get_factory_addresses(protocol, self.chain)
             if not deployment_block:
-                deployment_block = protocol_config.get("deployment_block", 12369621)  # Uniswap V3 default
+                deployment_block = self.config.protocols.get_deployment_block(protocol, self.chain)
             
             if not factory_addresses:
                 return FetchResult(
@@ -294,8 +291,8 @@ class CryoFetcher(BaseFetcher):
                     error=f"No factory addresses configured for {protocol} on {self.chain}"
                 )
             
-            # Pool created event signature  
-            pool_created_event = "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
+            # Pool created event signature from protocol config
+            pool_created_event = self.config.protocols.get_event_hash(f"{protocol}_pool_created")
             
             # Get latest block
             latest_block = await self.get_latest_block()

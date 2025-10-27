@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-DATA_DIR="/home/sam-sullivan/dynamic_whitelist/data"
-PYTHON="/home/sam-sullivan/dynamic_whitelist/.venv/bin/python"
-PROJECT_DIR="/home/sam-sullivan/dynamic_whitelist"
+DATA_DIR="/home/sam-sullivan/dynamicWhitelist/data"
+PYTHON="/home/sam-sullivan/dynamicWhitelist/.venv/bin/python"
+PROJECT_DIR="/home/sam-sullivan/dynamicWhitelist"
 
 CHAIN=ethereum
 RPC_URL=http://100.104.193.35:8545
@@ -33,15 +33,15 @@ cryo logs \
 
 $PYTHON ${PROJECT_DIR}/processors/uniswap_v4_pool_fetcher_parquet.py
 
-# # UniswapV4 liquidity eventss
-# DIR="${DATA_DIR}/${CHAIN}/uniswap_v4_modifyliquidity_events"
-# if [ -d $DIR ]; then rm "${DIR}/$(ls ${DIR} | tail -1)"; fi
-# cryo logs \
-# 	$CRYO_COMMON_OPTIONS \
-# 	--blocks "${UNISWAP_V4_POOL_MANAGER_CONTRACT_DEPLOYMENT_BLOCK}:${LAST_BLOCK}" \
-# 	--contract "${UNISWAP_V4_POOL_MANAGER_CONTRACT_ADDRESS}" \
-# 	--event "${MODIFYLIQUIDITY_EVENT_HASH}" \
-# 	--output-dir $DIR
+# UniswapV4 liquidity eventss
+DIR="${DATA_DIR}/${CHAIN}/uniswap_v4_modifyliquidity_events"
+if [ -d $DIR ]; then rm "${DIR}/$(ls ${DIR} | tail -1)"; fi
+cryo logs \
+	$CRYO_COMMON_OPTIONS \
+	--blocks "${UNISWAP_V4_POOL_MANAGER_CONTRACT_DEPLOYMENT_BLOCK}:${LAST_BLOCK}" \
+	--contract "${UNISWAP_V4_POOL_MANAGER_CONTRACT_ADDRESS}" \
+	--event "${MODIFYLIQUIDITY_EVENT_HASH}" \
+	--output-dir $DIR
 
-# $PYTHON ${DATA_DIR}/processors/uniswap_v4_liquidity_events_processor_parquet.py
+$PYTHON ${DATA_DIR}/processors/uniswap_v4_liquidity_events_processor_parquet.py
 

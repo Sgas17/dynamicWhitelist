@@ -86,11 +86,20 @@ class BaseConfig:
             raise ConfigError(f"Environment variable '{key}' must be an integer, got: {value}")
     
     @staticmethod
+    def get_env_float(key: str, default: Optional[float] = None, required: bool = False) -> float:
+        """Get environment variable as float."""
+        value = BaseConfig.get_env(key, str(default) if default is not None else None, required)
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            raise ConfigError(f"Environment variable '{key}' must be a float, got: {value}")
+
+    @staticmethod
     def get_env_bool(key: str, default: bool = False) -> bool:
         """Get environment variable as boolean."""
         value = BaseConfig.get_env(key, str(default))
         return value.lower() in ("true", "1", "yes", "on")
-    
+
     @staticmethod
     def get_env_list(key: str, default: Optional[List[str]] = None, separator: str = ",") -> List[str]:
         """Get environment variable as list."""

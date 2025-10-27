@@ -42,7 +42,7 @@ class JsonStorage(StorageBase):
         self.base_path = Path(config.get('base_path', './data'))
         self.compress = config.get('compress', False)
         self.pretty = config.get('pretty', True)
-        self.backup_count = config.get('backup_count', 5)
+        self.backup_count = config.get('backup_count', 2)
         
     async def connect(self) -> None:
         """Ensure base directory exists."""

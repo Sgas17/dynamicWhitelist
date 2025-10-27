@@ -35,13 +35,21 @@ class WhitelistPublisher:
     
     async def __aenter__(self):
         """Async context manager entry."""
-        # Initialize Redis cache
-        self.redis = RedisStorage(self.config)
+        # Initialize Redis cache with dict config
+        redis_config = self.config.database.get_redis_connection_kwargs()
+        self.redis = RedisStorage(redis_config)
         await self.redis.connect()
-        
-        # Initialize JSON storage
-        self.json_storage = JsonStorage(self.config)
-        
+
+        # Initialize JSON storage with dict config
+        json_config = {
+            'base_path': str(self.config.base.DATA_DIR),
+            'compress': False,
+            'pretty': True,
+            'backup_count': 2
+        }
+        self.json_storage = JsonStorage(json_config)
+        await self.json_storage.connect()
+
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
