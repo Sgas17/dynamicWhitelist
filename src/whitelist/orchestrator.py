@@ -121,15 +121,25 @@ class WhitelistOrchestrator:
         # This includes Stage 1 (whitelisted+trusted) and Stage 2 (whitelisted+whitelisted)
         all_tokens_for_query = whitelisted_tokens | trusted_token_addresses
 
+        # Query pools with tick_spacing for V3/V4 pools
         query = """
-        SELECT DISTINCT address, LOWER(asset0) as token0, LOWER(asset1) as token1, LOWER(factory) as factory
+        SELECT DISTINCT
+            p.address,
+            LOWER(p.asset0) as token0,
+            LOWER(p.asset1) as token1,
+            LOWER(p.factory) as factory,
+            COALESCE(v3.tick_spacing, v4.tick_spacing) as tick_spacing
         FROM (
             SELECT address, asset0, asset1, factory FROM network_1__dex_pools
             UNION
             SELECT address, asset0, asset1, factory FROM network_1_dex_pools_cryo
-        ) pools
+        ) p
+        LEFT JOIN network_1_uniswap_v3_pool_creation v3
+            ON LOWER(p.address) = LOWER(v3.pool)
+        LEFT JOIN network_1_uniswap_v4_pool_creation v4
+            ON LOWER(p.address) = LOWER(v4.pool_id)
         WHERE (
-            LOWER(asset0) = ANY($1) AND LOWER(asset1) = ANY($1)
+            LOWER(p.asset0) = ANY($1) AND LOWER(p.asset1) = ANY($1)
         )
         """
 
@@ -143,6 +153,7 @@ class WhitelistOrchestrator:
             factory = row['factory'].lower()
             token0 = row['token0']
             token1 = row['token1']
+            tick_spacing = row['tick_spacing']
 
             # Identify protocol
             if factory in v2_factories:
@@ -159,7 +170,8 @@ class WhitelistOrchestrator:
                 'token0': {'address': token0},
                 'token1': {'address': token1},
                 'factory': factory,
-                'protocol': protocol
+                'protocol': protocol,
+                'tick_spacing': tick_spacing  # Include for V3/V4 (will be None for V2)
             }
 
         self.logger.info(f"✅ Found {len(pools)} pools")

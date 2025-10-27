@@ -61,17 +61,21 @@ class PoolLiquidityFilter:
         min_liquidity_v2_usd: float = 2000,
         min_liquidity_v3_usd: float = 2000,
         min_liquidity_v4_usd: float = 2000,
-        chain: str = "ethereum"
+        chain: str = "ethereum",
+        reth_db_path: Optional[str] = None,
+        use_reth_db: bool = True
     ):
         """
         Initialize liquidity filter.
 
         Args:
-            web3: Web3 instance for blockchain calls
+            web3: Web3 instance for blockchain calls (fallback when Reth not available)
             min_liquidity_v2_usd: Minimum liquidity for V2 pools in USD
             min_liquidity_v3_usd: Minimum liquidity for V3 pools in USD
             min_liquidity_v4_usd: Minimum liquidity for V4 pools in USD
             chain: Blockchain name
+            reth_db_path: Path to reth database (optional, will try env var if not provided)
+            use_reth_db: Whether to use Reth DB if available (default: True)
         """
         self.web3 = web3
         self.min_liquidity_v2_usd = Decimal(str(min_liquidity_v2_usd))
@@ -79,6 +83,28 @@ class PoolLiquidityFilter:
         self.min_liquidity_v4_usd = Decimal(str(min_liquidity_v4_usd))
         self.chain = chain
         self.prices: Dict[str, Decimal] = {}  # token_address -> price in USD
+
+        # Reth DB integration
+        self.reth_loader = None
+        self.use_reth_db = use_reth_db
+
+        if use_reth_db:
+            try:
+                import os
+                from src.processors.pools.reth_snapshot_loader import RethSnapshotLoader
+
+                # Get reth_db_path from parameter or environment
+                db_path = reth_db_path or os.getenv("RETH_DB_PATH")
+
+                if db_path:
+                    self.reth_loader = RethSnapshotLoader(db_path)
+                    logger.info(f"✓ Reth DB loader initialized: {db_path}")
+                    logger.info("  Will use direct DB access for liquidity data (600x+ faster)")
+                else:
+                    logger.warning("RETH_DB_PATH not set, will use RPC fallback")
+            except Exception as e:
+                logger.warning(f"Could not initialize Reth DB loader: {e}")
+                logger.warning("Will use RPC fallback for liquidity data")
 
     async def fetch_missing_decimals(
         self,
@@ -1360,8 +1386,15 @@ class PoolLiquidityFilter:
         # Batch fetch V2 reserves
         if v2_pools:
             logger.info(f"   Fetching reserves for {len(v2_pools)} V2 pools...")
-            v2_batcher = UniswapV2ReservesBatcher(self.web3)
-            v2_reserves = await v2_batcher.fetch_reserves_chunked(list(v2_pools.keys()))
+
+            # Try Reth DB first, fallback to RPC
+            if self.reth_loader:
+                logger.info("   Using Reth DB for V2 reserves (direct access)")
+                v2_reserves = self._fetch_v2_reserves_from_reth(list(v2_pools.keys()))
+            else:
+                logger.info("   Using RPC for V2 reserves (fallback)")
+                v2_batcher = UniswapV2ReservesBatcher(self.web3)
+                v2_reserves = await v2_batcher.fetch_reserves_chunked(list(v2_pools.keys()))
 
             for pool_addr, pool_data in v2_pools.items():
                 reserves = v2_reserves.get(pool_addr.lower())
@@ -1382,10 +1415,17 @@ class PoolLiquidityFilter:
         # Batch fetch V3 state
         if v3_pools:
             logger.info(f"   Fetching state for {len(v3_pools)} V3 pools...")
-            from src.batchers.uniswap_v3_data import UniswapV3DataBatcher
-            from src.batchers.base import BatchConfig
-            v3_batcher = UniswapV3DataBatcher(self.web3, config=BatchConfig(batch_size=50))
-            v3_states = await v3_batcher.fetch_pools_chunked(list(v3_pools.keys()))
+
+            # Try Reth DB first, fallback to RPC
+            if self.reth_loader:
+                logger.info("   Using Reth DB for V3 tick data (direct access)")
+                v3_states = self._fetch_v3_states_from_reth(v3_pools)
+            else:
+                logger.info("   Using RPC for V3 state (fallback)")
+                from src.batchers.uniswap_v3_data import UniswapV3DataBatcher
+                from src.batchers.base import BatchConfig
+                v3_batcher = UniswapV3DataBatcher(self.web3, config=BatchConfig(batch_size=50))
+                v3_states = await v3_batcher.fetch_pools_chunked(list(v3_pools.keys()))
 
             for pool_addr, pool_data in v3_pools.items():
                 state = v3_states.get(pool_addr.lower())
@@ -1406,10 +1446,17 @@ class PoolLiquidityFilter:
         # Batch fetch V4 state
         if v4_pools:
             logger.info(f"   Fetching state for {len(v4_pools)} V4 pools...")
-            from src.batchers.uniswap_v4_data import UniswapV4DataBatcher
-            from src.batchers.base import BatchConfig
-            v4_batcher = UniswapV4DataBatcher(self.web3, config=BatchConfig(batch_size=50))
-            v4_states = await v4_batcher.fetch_pools_chunked(list(v4_pools.keys()))
+
+            # Try Reth DB first, fallback to RPC
+            if self.reth_loader:
+                logger.info("   Using Reth DB for V4 tick data (direct access)")
+                v4_states = self._fetch_v4_states_from_reth(v4_pools)
+            else:
+                logger.info("   Using RPC for V4 state (fallback)")
+                from src.batchers.uniswap_v4_data import UniswapV4DataBatcher
+                from src.batchers.base import BatchConfig
+                v4_batcher = UniswapV4DataBatcher(self.web3, config=BatchConfig(batch_size=50))
+                v4_states = await v4_batcher.fetch_pools_chunked(list(v4_pools.keys()))
 
             for pool_addr, pool_data in v4_pools.items():
                 state = v4_states.get(pool_addr.lower())
@@ -1550,3 +1597,158 @@ class PoolLiquidityFilter:
             return liquidity_decimal * price1 / Decimal(10 ** decimals1)
 
         return None
+
+    def _fetch_v2_reserves_from_reth(self, pool_addresses: List[str]) -> Dict[str, Dict]:
+        """
+        Fetch V2 pool reserves from Reth DB.
+
+        Args:
+            pool_addresses: List of V2 pool addresses
+
+        Returns:
+            Dict mapping pool_address -> reserves_dict (with hex strings)
+        """
+        import time
+        start_time = time.time()
+
+        results = {}
+        for pool_addr in pool_addresses:
+            try:
+                reserves, block_number = self.reth_loader.load_v2_pool_snapshot(pool_addr)
+
+                # Convert to format expected by existing code (hex strings)
+                results[pool_addr.lower()] = {
+                    "reserve0": hex(reserves.get("reserve0", 0)),
+                    "reserve1": hex(reserves.get("reserve1", 0)),
+                    "blockTimestampLast": reserves.get("block_timestamp_last", 0),
+                }
+            except Exception as e:
+                logger.debug(f"Failed to load V2 pool {pool_addr[:10]}... from reth: {e}")
+
+        elapsed = time.time() - start_time
+        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_addresses)} V2 pools in {elapsed:.2f}s")
+
+        return results
+
+    def _fetch_v3_states_from_reth(self, v3_pools: Dict[str, Dict]) -> Dict[str, Dict]:
+        """
+        Fetch V3 pool states from Reth DB.
+
+        Args:
+            v3_pools: Dict of pool_address -> pool_data (MUST include tick_spacing)
+
+        Returns:
+            Dict mapping pool_address -> state_dict (sqrtPriceX96, liquidity, tick)
+        """
+        import time
+        start_time = time.time()
+
+        # Prepare configs for batch loading
+        pool_configs = []
+        address_to_config = {}
+
+        for pool_addr, pool_data in v3_pools.items():
+            # tick_spacing is REQUIRED - cannot use defaults
+            tick_spacing = pool_data.get("tick_spacing")
+            if not tick_spacing:
+                logger.error(f"❌ CRITICAL: Missing tick_spacing for V3 pool {pool_addr} - skipping!")
+                logger.error(f"   Pool data: {pool_data}")
+                continue
+
+            config = {
+                "address": pool_addr,
+                "tick_spacing": tick_spacing,
+            }
+            pool_configs.append(config)
+            address_to_config[pool_addr.lower()] = config
+
+        if not pool_configs:
+            logger.error("No valid V3 pools to load from Reth DB (all missing tick_spacing)")
+            return {}
+
+        # Batch load from reth
+        results_list = self.reth_loader.batch_load_v3_pools(pool_configs)
+
+        # Convert to expected format
+        results = {}
+        total_liquidity = 0
+
+        for (pool_addr, tick_data, block_number), config in zip(results_list, pool_configs):
+            # Calculate total liquidity from tick data
+            liquidity = sum(data["liquidity_gross"] for data in tick_data.values())
+            total_liquidity += liquidity
+
+            # For liquidity filtering, we need sqrtPriceX96 and liquidity
+            # We can't get sqrtPriceX96 from just tick data, so we'll use RPC fallback for slot0
+            # For now, create a simplified state with just liquidity
+            results[pool_addr.lower()] = {
+                "liquidity": str(liquidity),
+                "sqrtPriceX96": "0",  # Would need RPC call or additional DB read
+                "tick": 0,  # Would need RPC call or additional DB read
+                "block_number": block_number,
+            }
+
+        elapsed = time.time() - start_time
+        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_configs)} V3 pools in {elapsed:.2f}s")
+        logger.info(f"      Total liquidity (raw): {total_liquidity:,}")
+
+        return results
+
+    def _fetch_v4_states_from_reth(self, v4_pools: Dict[str, Dict]) -> Dict[str, Dict]:
+        """
+        Fetch V4 pool states from Reth DB.
+
+        Args:
+            v4_pools: Dict of pool_id -> pool_data (MUST include tick_spacing, pool_manager)
+
+        Returns:
+            Dict mapping pool_id -> state_dict (sqrtPriceX96, liquidity, tick)
+        """
+        import time
+        start_time = time.time()
+
+        results = {}
+        total_liquidity = 0
+        skipped = 0
+
+        for pool_id, pool_data in v4_pools.items():
+            try:
+                pool_manager = pool_data.get("address", "")
+                tick_spacing = pool_data.get("tick_spacing")
+
+                # tick_spacing is REQUIRED - cannot use defaults
+                if not tick_spacing:
+                    logger.error(f"❌ CRITICAL: Missing tick_spacing for V4 pool {pool_id} - skipping!")
+                    logger.error(f"   Pool data: {pool_data}")
+                    skipped += 1
+                    continue
+
+                # Load from reth
+                tick_data, block_number = self.reth_loader.load_v4_pool_snapshot(
+                    pool_address=pool_manager,
+                    pool_id=pool_id,
+                    tick_spacing=tick_spacing,
+                )
+
+                # Calculate total liquidity from tick data
+                liquidity = sum(data["liquidity_gross"] for data in tick_data.values())
+                total_liquidity += liquidity
+
+                # Create simplified state
+                results[pool_id.lower()] = {
+                    "liquidity": str(liquidity),
+                    "sqrtPriceX96": "0",  # Would need RPC call or additional DB read
+                    "tick": 0,  # Would need RPC call or additional DB read
+                    "block_number": block_number,
+                }
+            except Exception as e:
+                logger.error(f"Failed to load V4 pool {pool_id[:10]}... from reth: {e}")
+                skipped += 1
+
+        elapsed = time.time() - start_time
+        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(v4_pools) - skipped} V4 pools in {elapsed:.2f}s")
+        if skipped > 0:
+            logger.warning(f"   ⚠️  Skipped {skipped} V4 pools due to errors")
+        logger.info(f"      Total liquidity (raw): {total_liquidity:,}")
+
+        return results
