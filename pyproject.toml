@@ -42,3 +42,8 @@ markers = [
     "slow: marks tests as slow running",
     "unit: marks tests as unit tests (default)"
 ]
+
+[tool.uv]
+dev-dependencies = [
+    "maturin>=1.9.6",
+]

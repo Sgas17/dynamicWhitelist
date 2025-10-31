@@ -7,7 +7,7 @@ Filters pools based on minimum dollar notional value of reserves/liquidity.
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Dict, Set, Tuple, Optional
+from typing import Dict, Set, Tuple, Optional, List
 
 from web3 import Web3
 
@@ -1645,7 +1645,6 @@ class PoolLiquidityFilter:
 
         # Prepare configs for batch loading
         pool_configs = []
-        address_to_config = {}
 
         for pool_addr, pool_data in v3_pools.items():
             # tick_spacing is REQUIRED - cannot use defaults
@@ -1660,32 +1659,27 @@ class PoolLiquidityFilter:
                 "tick_spacing": tick_spacing,
             }
             pool_configs.append(config)
-            address_to_config[pool_addr.lower()] = config
 
         if not pool_configs:
             logger.error("No valid V3 pools to load from Reth DB (all missing tick_spacing)")
             return {}
 
-        # Batch load from reth
-        results_list = self.reth_loader.batch_load_v3_pools(pool_configs)
+        # Batch load states (slot0 + liquidity only, much faster)
+        states_list = self.reth_loader.batch_load_v3_states(pool_configs)
 
         # Convert to expected format
         results = {}
         total_liquidity = 0
 
-        for (pool_addr, tick_data, block_number), config in zip(results_list, pool_configs):
-            # Calculate total liquidity from tick data
-            liquidity = sum(data["liquidity_gross"] for data in tick_data.values())
+        for state in states_list:
+            pool_addr = state["address"].lower()
+            liquidity = int(state["liquidity"])
             total_liquidity += liquidity
 
-            # For liquidity filtering, we need sqrtPriceX96 and liquidity
-            # We can't get sqrtPriceX96 from just tick data, so we'll use RPC fallback for slot0
-            # For now, create a simplified state with just liquidity
-            results[pool_addr.lower()] = {
-                "liquidity": str(liquidity),
-                "sqrtPriceX96": "0",  # Would need RPC call or additional DB read
-                "tick": 0,  # Would need RPC call or additional DB read
-                "block_number": block_number,
+            results[pool_addr] = {
+                "liquidity": state["liquidity"],
+                "sqrtPriceX96": state["sqrtPriceX96"],
+                "tick": state["tick"],
             }
 
         elapsed = time.time() - start_time
@@ -1707,48 +1701,56 @@ class PoolLiquidityFilter:
         import time
         start_time = time.time()
 
-        results = {}
-        total_liquidity = 0
-        skipped = 0
+        # Prepare configs for batch loading
+        pool_configs = []
 
         for pool_id, pool_data in v4_pools.items():
-            try:
-                pool_manager = pool_data.get("address", "")
-                tick_spacing = pool_data.get("tick_spacing")
+            pool_manager = pool_data.get("address", "")
+            tick_spacing = pool_data.get("tick_spacing")
 
-                # tick_spacing is REQUIRED - cannot use defaults
-                if not tick_spacing:
-                    logger.error(f"❌ CRITICAL: Missing tick_spacing for V4 pool {pool_id} - skipping!")
-                    logger.error(f"   Pool data: {pool_data}")
-                    skipped += 1
-                    continue
+            # Validate required fields
+            if not pool_manager:
+                logger.error(f"❌ CRITICAL: Missing pool_manager address for V4 pool {pool_id} - skipping!")
+                logger.error(f"   Pool data: {pool_data}")
+                continue
 
-                # Load from reth
-                tick_data, block_number = self.reth_loader.load_v4_pool_snapshot(
-                    pool_address=pool_manager,
-                    pool_id=pool_id,
-                    tick_spacing=tick_spacing,
-                )
+            # tick_spacing is REQUIRED - cannot use defaults
+            if not tick_spacing:
+                logger.error(f"❌ CRITICAL: Missing tick_spacing for V4 pool {pool_id} - skipping!")
+                logger.error(f"   Pool data: {pool_data}")
+                continue
 
-                # Calculate total liquidity from tick data
-                liquidity = sum(data["liquidity_gross"] for data in tick_data.values())
-                total_liquidity += liquidity
+            config = {
+                "pool_id": pool_id,
+                "pool_manager": pool_manager,
+                "tick_spacing": tick_spacing,
+            }
+            pool_configs.append(config)
 
-                # Create simplified state
-                results[pool_id.lower()] = {
-                    "liquidity": str(liquidity),
-                    "sqrtPriceX96": "0",  # Would need RPC call or additional DB read
-                    "tick": 0,  # Would need RPC call or additional DB read
-                    "block_number": block_number,
-                }
-            except Exception as e:
-                logger.error(f"Failed to load V4 pool {pool_id[:10]}... from reth: {e}")
-                skipped += 1
+        if not pool_configs:
+            logger.error("No valid V4 pools to load from Reth DB (all missing tick_spacing)")
+            return {}
+
+        # Batch load states (slot0 + liquidity only, much faster)
+        states_list = self.reth_loader.batch_load_v4_states(pool_configs)
+
+        # Convert to expected format
+        results = {}
+        total_liquidity = 0
+
+        for state in states_list:
+            pool_id = state["pool_id"].lower()
+            liquidity = int(state["liquidity"])
+            total_liquidity += liquidity
+
+            results[pool_id] = {
+                "liquidity": state["liquidity"],
+                "sqrtPriceX96": state["sqrtPriceX96"],
+                "tick": state["tick"],
+            }
 
         elapsed = time.time() - start_time
-        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(v4_pools) - skipped} V4 pools in {elapsed:.2f}s")
-        if skipped > 0:
-            logger.warning(f"   ⚠️  Skipped {skipped} V4 pools due to errors")
+        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_configs)} V4 pools in {elapsed:.2f}s")
         logger.info(f"      Total liquidity (raw): {total_liquidity:,}")
 
         return results

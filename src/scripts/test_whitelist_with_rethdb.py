@@ -66,7 +66,8 @@ async def main():
         results = await orchestrator.run_pipeline(
             chain="ethereum",
             top_transfers=100,
-            protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"]
+            protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"],
+            save_snapshots_to_db=True  # Save snapshots for verification
         )
 
         overall_elapsed = time.time() - overall_start
@@ -80,6 +81,16 @@ async def main():
         logger.info(f"Results:")
         logger.info(f"  Tokens whitelisted: {results['whitelist']['total_tokens']}")
         logger.info(f"  Stage 1 pools: {results['stage1_pools']['count']}")
+
+        # Count pools by protocol
+        v2_count = sum(1 for p in results['stage1_pools']['pools'] if p['protocol'] == 'v2')
+        v3_count = sum(1 for p in results['stage1_pools']['pools'] if p['protocol'] == 'v3')
+        v4_count = sum(1 for p in results['stage1_pools']['pools'] if p['protocol'] == 'v4')
+
+        logger.info(f"    V2 pools: {v2_count}")
+        logger.info(f"    V3 pools: {v3_count}")
+        logger.info(f"    V4 pools: {v4_count}")
+
         logger.info(f"  Stage 2 pools: {results['stage2_pools']['count']}")
         logger.info(f"  Token prices: {len(results['token_prices'])}")
         logger.info(f"")
