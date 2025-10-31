@@ -26,6 +26,7 @@ if __name__ == "__main__":
 from src.config import ConfigManager
 from src.core.storage.postgres import PostgresStorage
 from src.core.storage.whitelist_publisher import WhitelistPublisher
+from src.core.storage.pool_whitelist_publisher import PoolWhitelistNatsPublisher
 from src.whitelist.builder import TokenWhitelistBuilder
 from src.whitelist.pool_filter import PoolFilter, PoolInfo, TokenPrice
 from src.whitelist.liquidity_filter import PoolLiquidityFilter
@@ -352,7 +353,100 @@ class WhitelistOrchestrator:
                 metadata=publish_metadata
             )
 
-            self.logger.info(f"Publishing results: {publish_results}")
+            self.logger.info(f"Token whitelist publishing results: {publish_results}")
+
+        # Step 5b: Publish pool whitelist to NATS (for ExEx and poolStateArena)
+        self.logger.info("STEP 5b: PUBLISH POOL WHITELIST TO NATS")
+
+        # Prepare pools with full metadata for NATS publishing
+        all_pools = stage1_pools + stage2_pools
+        if all_pools:
+            pools_for_nats = []
+            skipped_pools = 0
+
+            for pool in all_pools:
+                # Get token info - MUST have decimals and symbol
+                token0_info = token_info.get(pool.token0, {})
+                token1_info = token_info.get(pool.token1, {})
+
+                # Skip pools with missing token metadata (decimals or symbol)
+                if not token0_info.get('decimals') or not token0_info.get('symbol'):
+                    self.logger.warning(
+                        f"Skipping pool {pool.pool_address}: missing token0 metadata "
+                        f"(token: {pool.token0})"
+                    )
+                    skipped_pools += 1
+                    continue
+
+                if not token1_info.get('decimals') or not token1_info.get('symbol'):
+                    self.logger.warning(
+                        f"Skipping pool {pool.pool_address}: missing token1 metadata "
+                        f"(token: {pool.token1})"
+                    )
+                    skipped_pools += 1
+                    continue
+
+                pool_dict = {
+                    "address": pool.pool_address,
+                    "token0": {
+                        "address": pool.token0,
+                        "decimals": token0_info['decimals'],
+                        "symbol": token0_info['symbol'],
+                        "name": token0_info.get('name', '')
+                    },
+                    "token1": {
+                        "address": pool.token1,
+                        "decimals": token1_info['decimals'],
+                        "symbol": token1_info['symbol'],
+                        "name": token1_info.get('name', '')
+                    },
+                    "protocol": pool.protocol,
+                    "factory": pool.factory,
+                }
+
+                # Add optional fields
+                if pool.fee is not None:
+                    pool_dict["fee"] = pool.fee
+                if pool.tick_spacing is not None:
+                    pool_dict["tick_spacing"] = pool.tick_spacing
+
+                pools_for_nats.append(pool_dict)
+
+            if skipped_pools > 0:
+                self.logger.warning(
+                    f"Skipped {skipped_pools} pools due to missing token metadata"
+                )
+
+            # Publish to NATS (minimal + full topics)
+            if pools_for_nats:
+                try:
+                    async with PoolWhitelistNatsPublisher() as pool_publisher:
+                        pool_publish_results = await pool_publisher.publish_pool_whitelist(
+                            chain=chain,
+                            pools=pools_for_nats
+                        )
+                        self.logger.info(f"Pool whitelist publishing results: {pool_publish_results}")
+                        publish_results.update({
+                            "nats_pools_minimal": pool_publish_results.get("minimal", False),
+                            "nats_pools_full": pool_publish_results.get("full", False),
+                            "nats_pools_count": len(pools_for_nats)
+                        })
+                except Exception as e:
+                    self.logger.error(f"Failed to publish pools to NATS: {e}", exc_info=True)
+                    publish_results.update({
+                        "nats_pools_minimal": False,
+                        "nats_pools_full": False,
+                        "nats_pools_count": 0
+                    })
+            else:
+                self.logger.warning("No pools with complete metadata to publish to NATS")
+                publish_results.update({
+                    "nats_pools_minimal": False,
+                    "nats_pools_full": False,
+                    "nats_pools_count": 0
+                })
+        else:
+            self.logger.warning("No pools to publish to NATS")
 
         # Step 6: Save detailed results locally
         self.logger.info("STEP 6: SAVE DETAILED RESULTS")
