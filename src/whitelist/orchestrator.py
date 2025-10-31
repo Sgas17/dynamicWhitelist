@@ -27,8 +27,9 @@ from src.config import ConfigManager
 from src.core.storage.postgres import PostgresStorage
 from src.core.storage.whitelist_publisher import WhitelistPublisher
 from src.core.storage.pool_whitelist_publisher import PoolWhitelistNatsPublisher
+from src.core.storage.token_whitelist_publisher import TokenWhitelistNatsPublisher
 from src.whitelist.builder import TokenWhitelistBuilder
-from src.whitelist.pool_filter import PoolFilter, PoolInfo, TokenPrice
+from src.whitelist.types import PoolInfo, TokenPrice
 from src.whitelist.liquidity_filter import PoolLiquidityFilter
 from web3 import Web3
 
@@ -62,8 +63,6 @@ class WhitelistOrchestrator:
         self,
         chain: str = "ethereum",
         top_transfers: int = 100,
-        stage1_liquidity: Decimal = Decimal("10000"),  # $10k
-        stage2_liquidity: Decimal = Decimal("50000"),  # $50k
         protocols: List[str] = ["uniswap_v2", "uniswap_v3", "uniswap_v4"],
         save_snapshots_to_db: bool = False
     ) -> Dict:
@@ -73,12 +72,17 @@ class WhitelistOrchestrator:
         Args:
             chain: Blockchain identifier
             top_transfers: Number of top transferred tokens to include in whitelist
-            stage1_liquidity: Liquidity threshold for Stage 1 (whitelisted + trusted)
-            stage2_liquidity: Liquidity threshold for Stage 2 (whitelisted + any)
             protocols: DEX protocols to query
+            save_snapshots_to_db: Whether to save liquidity snapshots to database
 
         Returns:
             Dictionary with complete pipeline results
+
+        Note:
+            Liquidity thresholds are configured per-protocol in ChainConfig:
+            - MIN_LIQUIDITY_V2: V2 pool minimum liquidity (default: $2k)
+            - MIN_LIQUIDITY_V3: V3 pool minimum liquidity (default: $2k)
+            - MIN_LIQUIDITY_V4: V4 pool minimum liquidity (default: $1k)
         """
         self.logger.info("="*80)
         self.logger.info("DYNAMIC WHITELIST & POOL FILTERING PIPELINE")
@@ -110,7 +114,11 @@ class WhitelistOrchestrator:
         self.logger.info("STEP 2: QUERY POOLS FROM DATABASE")
         self.logger.info(f"Whitelisted tokens: {len(whitelisted_tokens)}")
         self.logger.info(f"Trusted tokens: {list(trusted_tokens.keys())}")
-        self.logger.info(f"Liquidity threshold: ${stage1_liquidity:,}")
+        self.logger.info(
+            f"Liquidity thresholds: V2=${self.config.chains.MIN_LIQUIDITY_V2:,.0f}, "
+            f"V3=${self.config.chains.MIN_LIQUIDITY_V3:,.0f}, "
+            f"V4=${self.config.chains.MIN_LIQUIDITY_V4:,.0f}"
+        )
 
         # Query pools containing whitelisted or trusted tokens
         all_tokens = whitelisted_tokens | trusted_token_addresses
@@ -337,8 +345,9 @@ class WhitelistOrchestrator:
             "total_pools": len(stage1_pools) + len(stage2_pools),
             "config": {
                 "top_transfers": top_transfers,
-                "stage1_liquidity": str(stage1_liquidity),
-                "stage2_liquidity": str(stage2_liquidity),
+                "min_liquidity_v2_usd": float(self.config.chains.MIN_LIQUIDITY_V2),
+                "min_liquidity_v3_usd": float(self.config.chains.MIN_LIQUIDITY_V3),
+                "min_liquidity_v4_usd": float(self.config.chains.MIN_LIQUIDITY_V4),
                 "protocols": protocols
             }
         }
@@ -448,6 +457,75 @@ class WhitelistOrchestrator:
         else:
             self.logger.warning("No pools to publish to NATS")
 
+        # Step 5c: Publish token whitelist to NATS (for dynamic token tracking)
+        self.logger.info("STEP 5c: PUBLISH TOKEN WHITELIST TO NATS")
+
+        # Prepare tokens with metadata for NATS publishing
+        if whitelisted_tokens:
+            tokens_for_nats = {}
+            skipped_tokens = 0
+
+            for token in whitelisted_tokens:
+                # Get token info - MUST have decimals and symbol
+                token_metadata = token_info.get(token, {})
+
+                # Skip tokens with missing required metadata
+                if not token_metadata.get('decimals') or not token_metadata.get('symbol'):
+                    self.logger.warning(
+                        f"Skipping token {token}: missing decimals or symbol"
+                    )
+                    skipped_tokens += 1
+                    continue
+
+                # Get sources/filters for this token
+                token_filters = whitelist_result.get('token_sources', {}).get(token, [])
+
+                tokens_for_nats[token] = {
+                    "symbol": token_metadata['symbol'],
+                    "decimals": token_metadata['decimals'],
+                    "name": token_metadata.get('name', ''),
+                    "filters": token_filters
+                }
+
+            if skipped_tokens > 0:
+                self.logger.warning(
+                    f"Skipped {skipped_tokens} tokens due to missing metadata"
+                )
+
+            # Publish to NATS (full + delta topics)
+            if tokens_for_nats:
+                try:
+                    async with TokenWhitelistNatsPublisher() as token_publisher:
+                        token_publish_results = await token_publisher.publish_token_whitelist(
+                            chain=chain,
+                            tokens=tokens_for_nats
+                        )
+                        self.logger.info(f"Token whitelist NATS publishing results: {token_publish_results}")
+                        publish_results.update({
+                            "nats_tokens_full": token_publish_results.get("full", False),
+                            "nats_tokens_add": token_publish_results.get("add", False),
+                            "nats_tokens_remove": token_publish_results.get("remove", False),
+                            "nats_tokens_count": len(tokens_for_nats)
+                        })
+                except Exception as e:
+                    self.logger.error(f"Failed to publish tokens to NATS: {e}", exc_info=True)
+                    publish_results.update({
+                        "nats_tokens_full": False,
+                        "nats_tokens_add": False,
+                        "nats_tokens_remove": False,
+                        "nats_tokens_count": 0
+                    })
+            else:
+                self.logger.warning("No tokens with complete metadata to publish to NATS")
+                publish_results.update({
+                    "nats_tokens_full": False,
+                    "nats_tokens_add": False,
+                    "nats_tokens_remove": False,
+                    "nats_tokens_count": 0
+                })
+        else:
+            self.logger.warning("No tokens to publish to NATS")
+
         # Step 6: Save detailed results locally
         self.logger.info("STEP 6: SAVE DETAILED RESULTS")
 
@@ -481,12 +559,12 @@ class WhitelistOrchestrator:
             },
             "stage1_pools": {
                 "count": len(stage1_pools),
-                "liquidity_threshold": str(stage1_liquidity),
+                "description": "Pools containing whitelisted + trusted token pairs",
                 "pools": [self._pool_to_dict(p) for p in stage1_pools]
             },
             "stage2_pools": {
                 "count": len(stage2_pools),
-                "liquidity_threshold": str(stage2_liquidity),
+                "description": "Pools containing whitelisted + whitelisted token pairs",
                 "pools": [self._pool_to_dict(p) for p in stage2_pools]
             },
             "token_prices": {
@@ -822,11 +900,10 @@ async def main():
         orchestrator = WhitelistOrchestrator(storage, config)
 
         # Run pipeline with configurable parameters
+        # Liquidity thresholds are configured in ChainConfig (MIN_LIQUIDITY_V2/V3/V4)
         await orchestrator.run_pipeline(
             chain="ethereum",
             top_transfers=100,
-            stage1_liquidity=Decimal("10000"),   # $10k minimum for Stage 1
-            stage2_liquidity=Decimal("50000"),   # $50k minimum for Stage 2
             protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"]
         )
 

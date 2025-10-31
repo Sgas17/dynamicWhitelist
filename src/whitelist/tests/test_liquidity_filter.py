@@ -257,8 +257,6 @@ class TestFullPipeline:
             result = await orchestrator.run_pipeline(
                 chain="ethereum",
                 top_transfers=10,
-                stage1_liquidity=Decimal("10000"),
-                stage2_liquidity=Decimal("50000"),
                 protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"]
             )
 
