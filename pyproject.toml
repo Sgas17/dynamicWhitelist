@@ -1,0 +1,49 @@
+[project]
+name = "dynamicwhitelist"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.30.0",
+    "beautifulsoup4>=4.14.2",
+    "ccxt>=4.5.2",
+    "degenbot==0.5.0a2",
+    "eth-abi>=5.2.0",
+    "eth-utils>=5.3.1",
+    "hexbytes>=1.3.1",
+    "nats-py>=2.11.0",
+    "polars>=1.33.0",
+    "psycopg2-binary>=2.9.10",
+    "pytest>=8.4.1",
+    "python-dotenv>=1.1.1",
+    "redis>=6.4.0",
+    "sqlalchemy>=2.0.43",
+    "ujson>=5.11.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.12.11",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "."
+]
+testpaths = [
+    "test"
+]
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (require external services)",
+    "slow: marks tests as slow running",
+    "unit: marks tests as unit tests (default)"
+]
+
+[tool.uv]
+dev-dependencies = [
+    "maturin>=1.9.6",
+]

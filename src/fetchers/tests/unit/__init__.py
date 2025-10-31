@@ -1,0 +1,1 @@
+"""Unit tests for fetchers - no network calls, use mocks."""

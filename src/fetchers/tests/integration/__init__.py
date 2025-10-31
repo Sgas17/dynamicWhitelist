@@ -1,0 +1,1 @@
+"""Integration tests for fetchers - real API calls, network dependent."""
