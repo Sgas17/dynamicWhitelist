@@ -344,9 +344,13 @@ class WhitelistManager:
         pool_identifiers = [
             pool.get("pool_id", pool["address"]) for pool in pools
         ]
+        # Extract protocols array (1:1 correspondence with pools)
+        protocols = [pool["protocol"] for pool in pools]
+
         minimal_msg = {
             "type": "add",
             "pools": pool_identifiers,
+            "protocols": protocols,
             "chain": chain,
             "timestamp": timestamp,
             "snapshot_id": snapshot_id
@@ -412,9 +416,14 @@ class WhitelistManager:
         pool_identifiers = [
             pool.get("pool_id", pool["address"]) for pool in pools
         ]
+        # Extract protocols array (1:1 correspondence with pools)
+        protocols = [pool["protocol"] for pool in pools]
+
         minimal_msg = {
             "type": "full",
             "pools": pool_identifiers,
+            "protocols": protocols,
+            "pool_count": len(pools),
             "chain": chain,
             "timestamp": timestamp,
             "snapshot_id": snapshot_id
