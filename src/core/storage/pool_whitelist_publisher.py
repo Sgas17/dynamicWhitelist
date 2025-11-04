@@ -155,6 +155,70 @@ class PoolWhitelistNatsPublisher:
 
         return results
 
+    async def publish_snapshot_reference_block(
+        self,
+        chain: str,
+        reference_block: int,
+        snapshot_timestamp: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Publish snapshot reference block for ExEx synchronization.
+
+        This publishes a reference block number captured BEFORE pool scraping begins.
+        The ExEx service uses this to know from which block to start applying updates.
+
+        Key Architecture:
+        - Reference block is captured BEFORE scraping starts
+        - Scraping may take multiple blocks to complete
+        - Individual pools may have data from blocks >= reference_block
+        - ExEx should apply updates from (reference_block + 1) onwards
+        - This ensures no gaps in state reconstruction
+
+        Args:
+            chain: Chain identifier (ethereum, base, etc.)
+            reference_block: Block number captured before scraping started
+            snapshot_timestamp: ISO timestamp when reference block was captured
+            metadata: Additional metadata (e.g., {"pool_count": 1000, "protocols": ["v2", "v3", "v4"]})
+
+        Returns:
+            True if publishing succeeded, False otherwise
+
+        Example:
+            >>> publisher = PoolWhitelistNatsPublisher()
+            >>> await publisher.connect()
+            >>> await publisher.publish_snapshot_reference_block(
+            ...     chain="ethereum",
+            ...     reference_block=12345678,
+            ...     metadata={"pool_count": 1000, "duration_seconds": 45.2}
+            ... )
+        """
+        if not self.nc:
+            logger.error("❌ Not connected to NATS")
+            return False
+
+        subject = f"whitelist.snapshots.{chain}.reference_block"
+
+        message = {
+            "chain": chain,
+            "reference_block": reference_block,
+            "snapshot_timestamp": snapshot_timestamp or datetime.now(UTC).isoformat(),
+            "metadata": metadata or {}
+        }
+
+        try:
+            payload = json.dumps(message).encode()
+            await self.nc.publish(subject, payload)
+
+            logger.info(
+                f"📤 Published snapshot reference block to {subject}: "
+                f"block={reference_block}"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to publish reference block to {subject}: {e}")
+            return False
+
 
 # Standalone function for easy integration
 async def publish_pool_whitelist(
@@ -190,3 +254,39 @@ async def publish_pool_whitelist(
     """
     async with PoolWhitelistNatsPublisher(nats_url) as publisher:
         return await publisher.publish_pool_whitelist(chain, pools)
+
+
+async def publish_snapshot_reference_block(
+    chain: str,
+    reference_block: int,
+    snapshot_timestamp: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    nats_url: str = "nats://localhost:4222"
+) -> bool:
+    """
+    Standalone function to publish snapshot reference block.
+
+    Args:
+        chain: Chain identifier
+        reference_block: Block number captured before scraping
+        snapshot_timestamp: ISO timestamp when reference block was captured
+        metadata: Additional metadata about the snapshot
+        nats_url: NATS server URL
+
+    Returns:
+        True if publishing succeeded
+
+    Example:
+        >>> await publish_snapshot_reference_block(
+        ...     chain="ethereum",
+        ...     reference_block=12345678,
+        ...     metadata={"pool_count": 1000}
+        ... )
+    """
+    async with PoolWhitelistNatsPublisher(nats_url) as publisher:
+        return await publisher.publish_snapshot_reference_block(
+            chain=chain,
+            reference_block=reference_block,
+            snapshot_timestamp=snapshot_timestamp,
+            metadata=metadata
+        )

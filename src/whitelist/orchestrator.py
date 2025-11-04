@@ -26,8 +26,8 @@ if __name__ == "__main__":
 from src.config import ConfigManager
 from src.core.storage.postgres import PostgresStorage
 from src.core.storage.whitelist_publisher import WhitelistPublisher
-from src.core.storage.pool_whitelist_publisher import PoolWhitelistNatsPublisher
 from src.core.storage.token_whitelist_publisher import TokenWhitelistNatsPublisher
+from src.core.whitelist_manager import WhitelistManager
 from src.whitelist.builder import TokenWhitelistBuilder
 from src.whitelist.types import PoolInfo, TokenPrice
 from src.whitelist.liquidity_filter import PoolLiquidityFilter
@@ -63,8 +63,7 @@ class WhitelistOrchestrator:
         self,
         chain: str = "ethereum",
         top_transfers: int = 100,
-        protocols: List[str] = ["uniswap_v2", "uniswap_v3", "uniswap_v4"],
-        save_snapshots_to_db: bool = False
+        protocols: List[str] = ["uniswap_v2", "uniswap_v3", "uniswap_v4"]
     ) -> Dict:
         """
         Run the complete pipeline.
@@ -73,7 +72,6 @@ class WhitelistOrchestrator:
             chain: Blockchain identifier
             top_transfers: Number of top transferred tokens to include in whitelist
             protocols: DEX protocols to query
-            save_snapshots_to_db: Whether to save liquidity snapshots to database
 
         Returns:
             Dictionary with complete pipeline results
@@ -83,6 +81,10 @@ class WhitelistOrchestrator:
             - MIN_LIQUIDITY_V2: V2 pool minimum liquidity (default: $2k)
             - MIN_LIQUIDITY_V3: V3 pool minimum liquidity (default: $2k)
             - MIN_LIQUIDITY_V4: V4 pool minimum liquidity (default: $1k)
+
+            Full tick data collection and reference block publishing are handled by
+            poolStateArena, not dynamicWhitelist. This pipeline only filters pools
+            by liquidity using slot0 data and publishes the whitelist to NATS.
         """
         self.logger.info("="*80)
         self.logger.info("DYNAMIC WHITELIST & POOL FILTERING PIPELINE")
@@ -226,7 +228,7 @@ class WhitelistOrchestrator:
         # Step 3: Filter pools with comprehensive price discovery
         self.logger.info("STEP 3: FILTER POOLS WITH PRICE DISCOVERY")
 
-        # Initialize Web3 and PoolLiquidityFilter
+        # Get Web3 instance for liquidity filtering
         rpc_url = self.config.chains.get_rpc_url(chain)
         web3 = Web3(Web3.HTTPProvider(rpc_url))
 
@@ -292,24 +294,6 @@ class WhitelistOrchestrator:
         stage1_pools = filtered_pools
         stage2_pools = []
 
-        # Step 3.5: Collect full tick data for filtered pools
-        self.logger.info("STEP 3.5: COLLECT FULL TICK DATA")
-
-        pools_with_tick_data = await self._collect_full_tick_data(
-            filtered_pools_dict=filtered_pools_dict,
-            chain=chain
-        )
-
-        self.logger.info(f"✅ Collected tick data for {len(pools_with_tick_data)} pools")
-
-        # Step 3.6: Save snapshots to database for verification
-        if save_snapshots_to_db:
-            self.logger.info("STEP 3.6: SAVE SNAPSHOTS TO DATABASE")
-            await self.save_snapshots_to_database(
-                pools_with_ticks=pools_with_tick_data,
-                chain_id=1  # Ethereum mainnet
-            )
-
         # Step 4: Prepare whitelist for publishing
         self.logger.info("STEP 4: PREPARE WHITELIST FOR PUBLISHING")
 
@@ -365,7 +349,8 @@ class WhitelistOrchestrator:
             self.logger.info(f"Token whitelist publishing results: {publish_results}")
 
         # Step 5b: Publish pool whitelist to NATS (for ExEx and poolStateArena)
-        self.logger.info("STEP 5b: PUBLISH POOL WHITELIST TO NATS")
+        # Using WhitelistManager for differential updates
+        self.logger.info("STEP 5b: PUBLISH POOL WHITELIST TO NATS (DIFFERENTIAL)")
 
         # Prepare pools with full metadata for NATS publishing
         all_pools = stage1_pools + stage2_pools
@@ -426,33 +411,63 @@ class WhitelistOrchestrator:
                     f"Skipped {skipped_pools} pools due to missing token metadata"
                 )
 
-            # Publish to NATS (minimal + full topics)
+            # Publish to NATS using WhitelistManager (differential updates)
             if pools_for_nats:
                 try:
-                    async with PoolWhitelistNatsPublisher() as pool_publisher:
-                        pool_publish_results = await pool_publisher.publish_pool_whitelist(
+                    # Prepare database config for WhitelistManager
+                    db_config = {
+                        'host': self.config.database.POSTGRES_HOST,
+                        'port': self.config.database.POSTGRES_PORT,
+                        'user': self.config.database.POSTGRES_USER,
+                        'password': self.config.database.POSTGRES_PASSWORD,
+                        'database': self.config.database.POSTGRES_DB
+                    }
+
+                    # Use WhitelistManager for differential updates
+                    async with WhitelistManager(db_config) as wl_manager:
+                        # Publish differential update (Add/Remove/Full)
+                        update_result = await wl_manager.publish_differential_update(
                             chain=chain,
-                            pools=pools_for_nats
+                            new_pools=pools_for_nats
                         )
-                        self.logger.info(f"Pool whitelist publishing results: {pool_publish_results}")
+
+                        self.logger.info(
+                            f"📊 Whitelist differential update published: "
+                            f"{update_result['update_type']} - "
+                            f"+{update_result['added']} added, "
+                            f"-{update_result['removed']} removed, "
+                            f"total {update_result['total_pools']} pools "
+                            f"(snapshot {update_result['snapshot_id']})"
+                        )
+
                         publish_results.update({
-                            "nats_pools_minimal": pool_publish_results.get("minimal", False),
-                            "nats_pools_full": pool_publish_results.get("full", False),
-                            "nats_pools_count": len(pools_for_nats)
+                            "nats_pools_minimal": update_result['published'],
+                            "nats_pools_full": update_result['published'],
+                            "nats_pools_count": update_result['total_pools'],
+                            "nats_pools_added": update_result['added'],
+                            "nats_pools_removed": update_result['removed'],
+                            "nats_update_type": update_result['update_type'],
+                            "nats_snapshot_id": update_result['snapshot_id']
                         })
                 except Exception as e:
                     self.logger.error(f"Failed to publish pools to NATS: {e}", exc_info=True)
                     publish_results.update({
                         "nats_pools_minimal": False,
                         "nats_pools_full": False,
-                        "nats_pools_count": 0
+                        "nats_pools_count": 0,
+                        "nats_pools_added": 0,
+                        "nats_pools_removed": 0,
+                        "nats_update_type": "error"
                     })
             else:
                 self.logger.warning("No pools with complete metadata to publish to NATS")
                 publish_results.update({
                     "nats_pools_minimal": False,
                     "nats_pools_full": False,
-                    "nats_pools_count": 0
+                    "nats_pools_count": 0,
+                    "nats_pools_added": 0,
+                    "nats_pools_removed": 0,
+                    "nats_update_type": "skipped"
                 })
         else:
             self.logger.warning("No pools to publish to NATS")
@@ -629,247 +644,6 @@ class WhitelistOrchestrator:
             "factory": pool.factory,
             "block_number": pool.block_number
         }
-
-
-    async def _collect_full_tick_data(
-        self,
-        filtered_pools_dict: Dict[str, Dict],
-        chain: str
-    ) -> Dict[str, Dict]:
-        """
-        Collect full tick data for all filtered pools.
-
-        Args:
-            filtered_pools_dict: Dict of pool_address -> pool_data
-            chain: Chain name
-
-        Returns:
-            Dict mapping pool_address -> full_pool_data_with_ticks
-        """
-        from src.processors.pools.reth_snapshot_loader import RethSnapshotLoader
-        import os
-
-        # Initialize Reth DB loader
-        reth_db_path = os.getenv('RETH_DB_PATH', '/var/lib/docker/volumes/eth-docker_reth-el-data/_data/db')
-        reth_loader = RethSnapshotLoader(reth_db_path)
-
-        pools_with_ticks = {}
-
-        # Separate pools by protocol
-        v2_pools = {}
-        v3_pools = {}
-        v4_pools = {}
-
-        for pool_addr, pool_data in filtered_pools_dict.items():
-            protocol = pool_data.get('protocol')
-            if protocol == 'v2':
-                v2_pools[pool_addr] = pool_data
-            elif protocol == 'v3':
-                v3_pools[pool_addr] = pool_data
-            elif protocol == 'v4':
-                v4_pools[pool_addr] = pool_data
-
-        self.logger.info(f"   Collecting tick data: {len(v2_pools)} V2, {len(v3_pools)} V3, {len(v4_pools)} V4 pools")
-
-        # V2 pools - no tick data needed, just reserves
-        if v2_pools:
-            self.logger.info(f"   V2 pools: reserves already collected during filtering")
-            for pool_addr, pool_data in v2_pools.items():
-                pools_with_ticks[pool_addr] = {
-                    **pool_data,
-                    'has_tick_data': False,
-                    'tick_data': {}
-                }
-
-        # V3 pools - collect full tick data
-        if v3_pools:
-            self.logger.info(f"   Loading full tick data for {len(v3_pools)} V3 pools...")
-            
-            pool_configs = []
-            for pool_addr, pool_data in v3_pools.items():
-                tick_spacing = pool_data.get('tick_spacing')
-                if not tick_spacing:
-                    self.logger.error(f"Missing tick_spacing for V3 pool {pool_addr}")
-                    continue
-
-                pool_configs.append({
-                    "address": pool_addr,
-                    "tick_spacing": tick_spacing,
-                })
-
-            # Batch load full tick data (without slot0_only flag)
-            results_list = reth_loader.batch_load_v3_pools(pool_configs)
-
-            for (pool_addr, tick_data, bitmap_data, block_number), config in zip(results_list, pool_configs):
-                pools_with_ticks[pool_addr.lower()] = {
-                    **v3_pools[pool_addr.lower()],
-                    'has_tick_data': True,
-                    'tick_data': tick_data,
-                    'bitmap_data': bitmap_data,
-                    'block_number': block_number,
-                    'tick_count': len(tick_data)
-                }
-
-            self.logger.info(f"   ✅ Loaded tick data for {len(results_list)} V3 pools")
-
-        # V4 pools - collect full tick data
-        if v4_pools:
-            self.logger.info(f"   Loading full tick data for {len(v4_pools)} V4 pools...")
-            
-            # V4 pools use pool IDs as addresses
-            for pool_id, pool_data in v4_pools.items():
-                try:
-                    pool_manager = pool_data.get('address', '')
-                    tick_spacing = pool_data.get('tick_spacing')
-
-                    if not tick_spacing:
-                        self.logger.error(f"Missing tick_spacing for V4 pool {pool_id}")
-                        continue
-
-                    # Load from reth
-                    tick_data, bitmap_data, block_number = reth_loader.load_v4_pool_snapshot(
-                        pool_address=pool_manager,
-                        pool_id=pool_id,
-                        tick_spacing=tick_spacing,
-                    )
-
-                    pools_with_ticks[pool_id.lower()] = {
-                        **pool_data,
-                        'has_tick_data': True,
-                        'tick_data': tick_data,
-                        'bitmap_data': bitmap_data,
-                        'block_number': block_number,
-                        'tick_count': len(tick_data)
-                    }
-
-                except Exception as e:
-                    self.logger.error(f"Failed to load V4 pool {pool_id[:10]}... tick data: {e}")
-                    # Include pool without tick data
-                    pools_with_ticks[pool_id.lower()] = {
-                        **pool_data,
-                        'has_tick_data': False,
-                        'tick_data': {},
-                        'error': str(e)
-                    }
-
-            v4_success = sum(1 for p in pools_with_ticks.values() if p.get('has_tick_data') and p.get('protocol') == 'v4')
-            self.logger.info(f"   ✅ Loaded tick data for {v4_success}/{len(v4_pools)} V4 pools")
-
-        return pools_with_ticks
-
-    async def save_snapshots_to_database(
-        self,
-        pools_with_ticks: Dict[str, Dict],
-        chain_id: int = 1
-    ) -> None:
-        """
-        Save liquidity snapshots to database for verification.
-
-        Args:
-            pools_with_ticks: Dict of pool_address -> pool_data_with_ticks
-            chain_id: Chain ID (default 1 for Ethereum mainnet)
-        """
-        import json
-        from datetime import datetime, UTC
-
-        table_name = f"network_{chain_id}_liquidity_snapshots"
-
-        self.logger.info(f"💾 Saving {len(pools_with_ticks)} snapshots to {table_name}...")
-
-        # Clear existing data
-        await self.storage.pool.execute(f"DELETE FROM {table_name}")
-        self.logger.info(f"   Cleared existing data from {table_name}")
-
-        # Prepare insert data
-        snapshot_time = datetime.now(UTC)
-        insert_count = 0
-
-        for pool_addr, pool_data in pools_with_ticks.items():
-            protocol = pool_data.get('protocol')
-            factory = pool_data.get('factory', pool_data.get('address', ''))  # V4 uses address as manager
-            block_number = pool_data.get('block_number', 0)
-
-            # Get tokens - handle both dict and string formats
-            token0_dict = pool_data.get('token0', {})
-            token1_dict = pool_data.get('token1', {})
-            token0 = token0_dict.get('address', '') if isinstance(token0_dict, dict) else token0_dict or ''
-            token1 = token1_dict.get('address', '') if isinstance(token1_dict, dict) else token1_dict or ''
-
-            # Get fee and tick_spacing
-            fee = pool_data.get('fee', 0)
-            tick_spacing = pool_data.get('tick_spacing')  # Can be None for V2
-
-            # Prepare tick_data JSONB - ONLY the ticks, nothing else
-            # Format: {"-60": {"liquidity_gross": "123", "liquidity_net": "456"}}
-            tick_data_dict = pool_data.get('tick_data', {})
-            tick_data_for_db = {}
-            if tick_data_dict:
-                for tick_idx, tick_info in tick_data_dict.items():
-                    tick_data_for_db[str(tick_idx)] = {
-                        "liquidity_gross": str(tick_info.get("liquidity_gross", 0)),
-                        "liquidity_net": str(tick_info.get("liquidity_net", 0))
-                    }
-
-            # Prepare tick_bitmap JSONB - ONLY the bitmaps
-            # Format: {"word_pos": "0xhex_bitmap"}
-            bitmap_dict = pool_data.get('bitmap_data', {})
-            tick_bitmap_for_db = {}
-            if bitmap_dict:
-                for word_pos, bitmap_value in bitmap_dict.items():
-                    tick_bitmap_for_db[str(word_pos)] = bitmap_value
-
-            # Calculate totals for convenience columns
-            total_ticks = len(tick_data_for_db) if tick_data_for_db else 0
-            total_bitmap_words = len(tick_bitmap_for_db) if tick_bitmap_for_db else 0
-
-            # Get current block number - if not available, try to get from Web3
-            if block_number == 0:
-                try:
-                    from web3 import Web3
-                    w3 = Web3(Web3.HTTPProvider('http://localhost:8545'))
-                    block_number = w3.eth.block_number
-                except:
-                    block_number = 0  # Fallback to 0 if RPC unavailable
-
-            # Insert into database
-            await self.storage.pool.execute('''
-                INSERT INTO ''' + table_name + ''' (
-                    pool_address, snapshot_block, snapshot_timestamp,
-                    tick_bitmap, tick_data, factory, asset0, asset1, fee, tick_spacing, protocol,
-                    total_ticks, total_bitmap_words
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                ON CONFLICT (pool_address) DO UPDATE SET
-                    snapshot_block = EXCLUDED.snapshot_block,
-                    snapshot_timestamp = EXCLUDED.snapshot_timestamp,
-                    tick_bitmap = EXCLUDED.tick_bitmap,
-                    tick_data = EXCLUDED.tick_data,
-                    factory = EXCLUDED.factory,
-                    asset0 = EXCLUDED.asset0,
-                    asset1 = EXCLUDED.asset1,
-                    fee = EXCLUDED.fee,
-                    tick_spacing = EXCLUDED.tick_spacing,
-                    protocol = EXCLUDED.protocol,
-                    total_ticks = EXCLUDED.total_ticks,
-                    total_bitmap_words = EXCLUDED.total_bitmap_words
-            ''',
-            pool_addr,
-            block_number,
-            snapshot_time,
-            json.dumps(tick_bitmap_for_db),  # Bitmaps: {word_pos: "0xhex"}
-            json.dumps(tick_data_for_db),     # Ticks ONLY: {tick: {liq_gross, liq_net}}
-            factory,
-            token0,
-            token1,
-            fee,
-            tick_spacing,  # Can be None for V2
-            protocol,
-            total_ticks,
-            total_bitmap_words
-            )
-
-            insert_count += 1
-
-        self.logger.info(f"   ✅ Saved {insert_count} snapshots to {table_name}")
 
 
 async def main():

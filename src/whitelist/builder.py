@@ -364,9 +364,11 @@ class TokenWhitelistBuilder:
 
     async def get_top_transferred_tokens(self, top_n: int = 100) -> Set[str]:
         """
-        Get top N transferred tokens on Ethereum by average 24-hour transfer count.
+        Get top N transferred tokens on Ethereum by ranking score.
 
-        Queries token_hourly_transfers table for tokens with highest average transfers.
+        Queries transfers service database (separate microservice) for top tokens
+        based on composite ranking that includes transfer counts, unique addresses,
+        and activity metrics over 24h and 7d windows.
 
         Args:
             top_n: Number of top tokens to return
@@ -374,51 +376,69 @@ class TokenWhitelistBuilder:
         Returns:
             Set of token addresses (lowercase)
         """
-        print(f"\n📊 Getting top {top_n} transferred tokens on Ethereum...")
+        print(f"\n📊 Getting top {top_n} transferred tokens from transfers service...")
 
         try:
-            from datetime import datetime, timedelta
+            import asyncpg
 
-            # Query last 24 hours of hourly transfer data
-            cutoff_time = datetime.now() - timedelta(hours=24)
+            # Connect to transfers service database (separate from main database)
+            transfers_db_config = {
+                'host': 'localhost',
+                'port': 5433,  # Transfers service uses different port
+                'database': 'transfers',
+                'user': 'transfers_user',
+                'password': 'transfers_pass',
+            }
 
+            # Query the materialized view for fast performance
             query = """
             SELECT
                 token_address,
-                avg_transfers_24h,
-                MAX(hour_timestamp) as last_updated
-            FROM token_hourly_transfers
-            WHERE hour_timestamp >= $1
-            AND avg_transfers_24h IS NOT NULL
-            GROUP BY token_address, avg_transfers_24h
-            ORDER BY avg_transfers_24h DESC
-            LIMIT $2
+                transfer_count_24h,
+                unique_senders_24h,
+                unique_receivers_24h,
+                ranking_score,
+                last_updated
+            FROM top_transferred_tokens
+            WHERE rank <= $1
+            ORDER BY rank
             """
 
-            async with self.storage.pool.acquire() as conn:
-                results = await conn.fetch(query, cutoff_time, top_n)
+            conn = await asyncpg.connect(**transfers_db_config)
+            try:
+                results = await conn.fetch(query, top_n)
+            finally:
+                await conn.close()
 
             top_tokens = set()
             for row in results:
                 token_address = row['token_address'].lower()
-                avg_transfers = float(row['avg_transfers_24h'])
+                transfer_count = int(row['transfer_count_24h'])
+                ranking_score = float(row['ranking_score'])
                 top_tokens.add(token_address)
 
                 # Add to token_info if not already there
                 if token_address not in self.token_info:
                     self.token_info[token_address] = {
-                        'avg_transfers_24h': avg_transfers,
+                        'transfer_count_24h': transfer_count,
+                        'unique_senders_24h': int(row['unique_senders_24h']),
+                        'unique_receivers_24h': int(row['unique_receivers_24h']),
+                        'ranking_score': ranking_score,
                         'last_updated': str(row['last_updated'])
                     }
 
-                logger.debug(f"  ✓ {token_address[:10]}... - {avg_transfers:.1f} avg transfers/24h")
+                logger.debug(
+                    f"  ✓ {token_address[:10]}... - "
+                    f"{transfer_count} transfers, score: {ranking_score:.2f}"
+                )
 
             logger.info(f"  Found {len(top_tokens)} top transferred tokens")
             return top_tokens
 
         except Exception as e:
             logger.warning(f"    Error fetching top transferred tokens: {e}")
-            print(f"   This likely means no transfer data has been processed yet")
+            print(f"   This likely means the transfers service is not running or not reachable")
+            print(f"   Make sure the transfers-service is running: cd ~/transfers-service && docker-compose up -d")
             import traceback
             traceback.print_exc()
             return set()
