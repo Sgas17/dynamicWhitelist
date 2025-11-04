@@ -62,8 +62,7 @@ class WhitelistOrchestrator:
     async def run_pipeline(
         self,
         chain: str = "ethereum",
-        top_transfers: int = 100,
-        protocols: List[str] = ["uniswap_v2", "uniswap_v3", "uniswap_v4"]
+        top_transfers: int = 100
     ) -> Dict:
         """
         Run the complete pipeline.
@@ -71,7 +70,6 @@ class WhitelistOrchestrator:
         Args:
             chain: Blockchain identifier
             top_transfers: Number of top transferred tokens to include in whitelist
-            protocols: DEX protocols to query
 
         Returns:
             Dictionary with complete pipeline results
@@ -218,13 +216,6 @@ class WhitelistOrchestrator:
 
         self.logger.info(f"✅ Found {len(pools)} pools")
 
-        # Debug: Save V4 pool addresses being queried
-        v4_pools_queried = [addr for addr, p in pools.items() if p.get('protocol') == 'v4']
-        import json
-        with open('v4_pools_queried.json', 'w') as f:
-            json.dump({'count': len(v4_pools_queried), 'addresses': v4_pools_queried}, f, indent=2)
-        self.logger.info(f"💾 DEBUG: Saved {len(v4_pools_queried)} V4 pool addresses to v4_pools_queried.json")
-
         # Step 3: Filter pools with comprehensive price discovery
         self.logger.info("STEP 3: FILTER POOLS WITH PRICE DISCOVERY")
 
@@ -256,21 +247,9 @@ class WhitelistOrchestrator:
         filtered_pools_dict = result['filtered_pools']
         discovered_prices = result['discovered_prices']
 
-        # Convert filtered pools to PoolInfo objects for compatibility
-        filtered_pools = []
-        for pool_addr, pool_data in filtered_pools_dict.items():
-            pool_info = PoolInfo(
-                pool_address=pool_addr,
-                token0=pool_data['token0']['address'],
-                token1=pool_data['token1']['address'],
-                protocol=pool_data['protocol'],
-                liquidity=pool_data.get('liquidity_usd'),
-                fee=None,
-                tick_spacing=None,
-                factory=pool_data['factory'],
-                block_number=None
-            )
-            filtered_pools.append(pool_info)
+        # Use filtered_pools_dict directly instead of converting to PoolInfo
+        # This preserves V4 pool_id and other important metadata
+        filtered_pools = list(filtered_pools_dict.values())
 
         # Convert discovered prices to TokenPrice objects for compatibility
         token_prices = {}
@@ -289,10 +268,6 @@ class WhitelistOrchestrator:
                 pool_address=pool_addr or '',
                 liquidity=Decimal("0")  # Not tracked individually
             )
-
-        # For compatibility with existing code, treat all filtered pools as stage1
-        stage1_pools = filtered_pools
-        stage2_pools = []
 
         # Step 4: Prepare whitelist for publishing
         self.logger.info("STEP 4: PREPARE WHITELIST FOR PUBLISHING")
@@ -324,15 +299,12 @@ class WhitelistOrchestrator:
             "token_count": len(whitelisted_tokens),
             "generated_at": datetime.now(UTC).isoformat(),
             "sources_breakdown": whitelist_result.get('breakdown', {}),
-            "stage1_pools_count": len(stage1_pools),
-            "stage2_pools_count": len(stage2_pools),
-            "total_pools": len(stage1_pools) + len(stage2_pools),
+            "total_pools": len(filtered_pools),
             "config": {
                 "top_transfers": top_transfers,
                 "min_liquidity_v2_usd": float(self.config.chains.MIN_LIQUIDITY_V2),
                 "min_liquidity_v3_usd": float(self.config.chains.MIN_LIQUIDITY_V3),
-                "min_liquidity_v4_usd": float(self.config.chains.MIN_LIQUIDITY_V4),
-                "protocols": protocols
+                "min_liquidity_v4_usd": float(self.config.chains.MIN_LIQUIDITY_V4)
             }
         }
 
@@ -353,56 +325,66 @@ class WhitelistOrchestrator:
         self.logger.info("STEP 5b: PUBLISH POOL WHITELIST TO NATS (DIFFERENTIAL)")
 
         # Prepare pools with full metadata for NATS publishing
-        all_pools = stage1_pools + stage2_pools
-        if all_pools:
+        if filtered_pools:
             pools_for_nats = []
             skipped_pools = 0
 
-            for pool in all_pools:
+            for pool_data in filtered_pools:
+                # Get token addresses
+                token0_addr = pool_data['token0']['address']
+                token1_addr = pool_data['token1']['address']
+
                 # Get token info - MUST have decimals and symbol
-                token0_info = token_info.get(pool.token0, {})
-                token1_info = token_info.get(pool.token1, {})
+                token0_info = token_info.get(token0_addr, {})
+                token1_info = token_info.get(token1_addr, {})
 
                 # Skip pools with missing token metadata (decimals or symbol)
                 if not token0_info.get('decimals') or not token0_info.get('symbol'):
+                    pool_id = pool_data.get('pool_id', pool_data.get('address'))
                     self.logger.warning(
-                        f"Skipping pool {pool.pool_address}: missing token0 metadata "
-                        f"(token: {pool.token0})"
+                        f"Skipping pool {pool_id}: missing token0 metadata "
+                        f"(token: {token0_addr})"
                     )
                     skipped_pools += 1
                     continue
 
                 if not token1_info.get('decimals') or not token1_info.get('symbol'):
+                    pool_id = pool_data.get('pool_id', pool_data.get('address'))
                     self.logger.warning(
-                        f"Skipping pool {pool.pool_address}: missing token1 metadata "
-                        f"(token: {pool.token1})"
+                        f"Skipping pool {pool_id}: missing token1 metadata "
+                        f"(token: {token1_addr})"
                     )
                     skipped_pools += 1
                     continue
 
+                # Build pool dict with proper structure for V2/V3/V4
                 pool_dict = {
-                    "address": pool.pool_address,
+                    "address": pool_data['address'],
                     "token0": {
-                        "address": pool.token0,
+                        "address": token0_addr,
                         "decimals": token0_info['decimals'],
                         "symbol": token0_info['symbol'],
                         "name": token0_info.get('name', '')
                     },
                     "token1": {
-                        "address": pool.token1,
+                        "address": token1_addr,
                         "decimals": token1_info['decimals'],
                         "symbol": token1_info['symbol'],
                         "name": token1_info.get('name', '')
                     },
-                    "protocol": pool.protocol,
-                    "factory": pool.factory,
+                    "protocol": pool_data['protocol'],
+                    "factory": pool_data['factory'],
                 }
 
+                # Add V4-specific pool_id field
+                if 'pool_id' in pool_data:
+                    pool_dict["pool_id"] = pool_data['pool_id']
+
                 # Add optional fields
-                if pool.fee is not None:
-                    pool_dict["fee"] = pool.fee
-                if pool.tick_spacing is not None:
-                    pool_dict["tick_spacing"] = pool.tick_spacing
+                if 'fee' in pool_data and pool_data['fee'] is not None:
+                    pool_dict["fee"] = pool_data['fee']
+                if 'tick_spacing' in pool_data and pool_data['tick_spacing'] is not None:
+                    pool_dict["tick_spacing"] = pool_data['tick_spacing']
 
                 pools_for_nats.append(pool_dict)
 
@@ -572,15 +554,10 @@ class WhitelistOrchestrator:
                 "unmapped_hyperliquid": whitelist_result.get('unmapped_hyperliquid', {}),
                 "unmapped_lighter": whitelist_result.get('unmapped_lighter', {})
             },
-            "stage1_pools": {
-                "count": len(stage1_pools),
-                "description": "Pools containing whitelisted + trusted token pairs",
-                "pools": [self._pool_to_dict(p) for p in stage1_pools]
-            },
-            "stage2_pools": {
-                "count": len(stage2_pools),
-                "description": "Pools containing whitelisted + whitelisted token pairs",
-                "pools": [self._pool_to_dict(p) for p in stage2_pools]
+            "pools": {
+                "count": len(filtered_pools),
+                "description": "Pools containing whitelisted or trusted tokens with sufficient liquidity",
+                "pools": filtered_pools
             },
             "token_prices": {
                 addr: {
@@ -607,11 +584,9 @@ class WhitelistOrchestrator:
             "metadata": {
                 "chain": chain,
                 "generated_at": datetime.now(UTC).isoformat(),
-                "stage1_count": len(stage1_pools),
-                "stage2_count": len(stage2_pools)
+                "pool_count": len(filtered_pools)
             },
-            "stage1": [self._pool_to_dict(p) for p in stage1_pools],
-            "stage2": [self._pool_to_dict(p) for p in stage2_pools]
+            "pools": filtered_pools
         }
         with open(pools_path, 'w') as f:
             json.dump(pools_data, f, indent=2)
@@ -622,28 +597,12 @@ class WhitelistOrchestrator:
         self.logger.info("="*80)
         self.logger.info(f"Summary:")
         self.logger.info(f"  Whitelisted tokens: {len(whitelisted_tokens)}")
-        self.logger.info(f"  Stage 1 pools: {len(stage1_pools)}")
-        self.logger.info(f"  Stage 2 pools: {len(stage2_pools)}")
+        self.logger.info(f"  Filtered pools: {len(filtered_pools)}")
         self.logger.info(f"  Token prices calculated: {len(token_prices)}")
-        self.logger.info(f"  Total arbitrage-ready pools: {len(stage1_pools) + len(stage2_pools)}")
         self.logger.info(f"  Published to: {', '.join([k for k, v in publish_results.items() if v])}")
         self.logger.info("="*80)
 
         return results
-
-    def _pool_to_dict(self, pool: PoolInfo) -> Dict:
-        """Convert PoolInfo to dictionary for JSON serialization."""
-        return {
-            "pool_address": pool.pool_address,
-            "token0": pool.token0,
-            "token1": pool.token1,
-            "protocol": pool.protocol,
-            "liquidity": str(pool.liquidity) if pool.liquidity else None,
-            "fee": pool.fee,
-            "tick_spacing": pool.tick_spacing,
-            "factory": pool.factory,
-            "block_number": pool.block_number
-        }
 
 
 async def main():
@@ -677,8 +636,7 @@ async def main():
         # Liquidity thresholds are configured in ChainConfig (MIN_LIQUIDITY_V2/V3/V4)
         await orchestrator.run_pipeline(
             chain="ethereum",
-            top_transfers=100,
-            protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"]
+            top_transfers=100
         )
 
     finally:

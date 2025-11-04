@@ -340,9 +340,13 @@ class WhitelistManager:
     ):
         """Publish Add update to NATS."""
         # Minimal message (for ExEx)
+        # For V4 pools, use pool_id instead of address (Pool Manager)
+        pool_identifiers = [
+            pool.get("pool_id", pool["address"]) for pool in pools
+        ]
         minimal_msg = {
             "type": "add",
-            "pools": [pool["address"] for pool in pools],
+            "pools": pool_identifiers,
             "chain": chain,
             "timestamp": timestamp,
             "snapshot_id": snapshot_id
@@ -404,9 +408,13 @@ class WhitelistManager:
     ):
         """Publish full replacement to NATS (backward compatible)."""
         # Minimal message (for ExEx)
+        # For V4 pools, use pool_id instead of address (Pool Manager)
+        pool_identifiers = [
+            pool.get("pool_id", pool["address"]) for pool in pools
+        ]
         minimal_msg = {
             "type": "full",
-            "pools": [pool["address"] for pool in pools],
+            "pools": pool_identifiers,
             "chain": chain,
             "timestamp": timestamp,
             "snapshot_id": snapshot_id
