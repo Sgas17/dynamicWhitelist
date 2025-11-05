@@ -5,22 +5,23 @@ This module tests the V3 tick and bitmap batchers with real blockchain calls
 using actual pool addresses to verify functionality works end-to-end.
 """
 
-import pytest
 import logging
-from typing import List, Dict
-from web3 import Web3
-from eth_typing import ChecksumAddress
-from typing import cast, Any, Dict, List
-from hexbytes import HexBytes
+from typing import Any, Dict, List, cast
 
+import pytest
+from eth_typing import ChecksumAddress
+from hexbytes import HexBytes
+from web3 import Web3
 
 # Set logging level for this module to see detailed output
 logging.getLogger().setLevel(logging.INFO)
 
+from eth_abi.abi import decode, encode
+
 from src.config import ConfigManager
-from ..uniswap_v3_ticks import UniswapV3TickBatcher, UniswapV3BitmapBatcher
+
 from ..base import BatchConfig
-from eth_abi.abi import encode, decode
+from ..uniswap_v3_ticks import UniswapV3BitmapBatcher, UniswapV3TickBatcher
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,8 @@ def web3_connection():
     try:
         config_manager = ConfigManager()
         # Get Ethereum chain config
-        chain_config = config_manager.chains.get_chain_config('ethereum')
-        rpc_url = chain_config['rpc_url']
+        chain_config = config_manager.chains.get_chain_config("ethereum")
+        rpc_url = chain_config["rpc_url"]
 
         logger.info(f"Connecting to: {rpc_url}")
         web3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -51,6 +52,7 @@ def web3_connection():
         logger.error(f"Failed to setup Web3: {e}")
         raise
 
+
 @pytest.fixture(scope="class")
 def test_pools(web3_connection):
     pool_addresses = {
@@ -64,7 +66,7 @@ def test_pools(web3_connection):
             "name": "WBTC/WETH 0.3%",
         },
     }
-    
+
     for pool_address in pool_addresses:
         with web3_connection.batch_requests() as batch:
             batch.add_mapping(
@@ -82,25 +84,40 @@ def test_pools(web3_connection):
                 }
             )
             slot0_result, tick_spacing_result = batch.execute()
-            
+
             # Decode slot0 - returns (sqrtPriceX96, tick, observationIndex, observationCardinality, observationCardinalityNext, feeProtocol, unlocked)
             _, tick, *_ = decode(
-                types=['uint160', 'int24', 'uint16', 'uint16', 'uint16', 'uint8', 'bool'],
-                data=cast("HexBytes", slot0_result)
+                types=[
+                    "uint160",
+                    "int24",
+                    "uint16",
+                    "uint16",
+                    "uint16",
+                    "uint8",
+                    "bool",
+                ],
+                data=cast("HexBytes", slot0_result),
             )
-            
+
             # Decode tickSpacing
-            tick_spacing = decode(types=['int24'], data=cast("HexBytes", tick_spacing_result))[0]
-            
-            tick = cast('int', tick)
-            tick_spacing = cast('int', tick_spacing)
-            
+            tick_spacing = decode(
+                types=["int24"], data=cast("HexBytes", tick_spacing_result)
+            )[0]
+
+            tick = cast("int", tick)
+            tick_spacing = cast("int", tick_spacing)
+
             nearest_spaced_tick = tick // tick_spacing * tick_spacing
-            pool_addresses[pool_address].update({
-                "tick": tick,
-                "tick_spacing": tick_spacing,
-                "test_ticks": [nearest_spaced_tick + (tick_spacing * i) for i in [-2, -1, 1, 2, 3]]
-            })
+            pool_addresses[pool_address].update(
+                {
+                    "tick": tick,
+                    "tick_spacing": tick_spacing,
+                    "test_ticks": [
+                        nearest_spaced_tick + (tick_spacing * i)
+                        for i in [-2, -1, 1, 2, 3]
+                    ],
+                }
+            )
     return pool_addresses
 
 
@@ -118,9 +135,7 @@ class TestLiveV3Ticks:
         pool_info = test_pools[pool_address]
         test_ticks = pool_info["test_ticks"]
 
-        pool_ticks = {
-            Web3.to_checksum_address(pool_address): test_ticks
-        }
+        pool_ticks = {Web3.to_checksum_address(pool_address): test_ticks}
 
         result = await batcher.fetch_tick_data(pool_ticks)
 
@@ -135,17 +150,19 @@ class TestLiveV3Ticks:
         for tick in test_ticks:
             if tick in pool_data:
                 tick_info = pool_data[tick]
-                assert hasattr(tick_info, 'tick'), "Missing tick"
-                assert hasattr(tick_info, 'liquidity_gross'), "Missing liquidity_gross"
-                assert hasattr(tick_info, 'liquidity_net'), "Missing liquidity_net"
-                assert hasattr(tick_info, 'is_initialized'), "Missing is_initialized"
+                assert hasattr(tick_info, "tick"), "Missing tick"
+                assert hasattr(tick_info, "liquidity_gross"), "Missing liquidity_gross"
+                assert hasattr(tick_info, "liquidity_net"), "Missing liquidity_net"
+                assert hasattr(tick_info, "is_initialized"), "Missing is_initialized"
 
                 print(f"✅ Tick {tick}:")
                 print(f"   Gross Liquidity: {tick_info.liquidity_gross}")
                 print(f"   Net Liquidity: {tick_info.liquidity_net}")
                 print(f"   Initialized: {tick_info.is_initialized}")
 
-        logger.info(f"✅ {pool_info['name']}: Fetched {len(pool_data)} ticks at block {result.block_number}")
+        logger.info(
+            f"✅ {pool_info['name']}: Fetched {len(pool_data)} ticks at block {result.block_number}"
+        )
 
     @pytest.mark.asyncio
     async def test_multiple_pools_tick_data(self, web3_connection, test_pools):
@@ -163,7 +180,9 @@ class TestLiveV3Ticks:
         # Assertions
         assert result.success, f"Multiple pools tick test failed: {result.error}"
         assert result.data, "No data returned"
-        assert len(result.data) == len(test_pools), f"Expected {len(test_pools)} pools, got {len(result.data)}"
+        assert len(result.data) == len(test_pools), (
+            f"Expected {len(test_pools)} pools, got {len(result.data)}"
+        )
         assert result.block_number, "No block number returned"
 
         # Verify all pools have valid data
@@ -173,16 +192,24 @@ class TestLiveV3Ticks:
 
             active_ticks = 0
             for tick, tick_info in pool_data.items():
-                assert hasattr(tick_info, 'liquidity_gross'), f"Missing liquidity_gross for tick {tick}"
-                assert hasattr(tick_info, 'liquidity_net'), f"Missing liquidity_net for tick {tick}"
+                assert hasattr(tick_info, "liquidity_gross"), (
+                    f"Missing liquidity_gross for tick {tick}"
+                )
+                assert hasattr(tick_info, "liquidity_net"), (
+                    f"Missing liquidity_net for tick {tick}"
+                )
 
                 if tick_info.is_initialized:
                     active_ticks += 1
-                    print(f"   Tick {tick}: Gross={tick_info.liquidity_gross}, Net={tick_info.liquidity_net}")
+                    print(
+                        f"   Tick {tick}: Gross={tick_info.liquidity_gross}, Net={tick_info.liquidity_net}"
+                    )
 
             print(f"   Active ticks: {active_ticks}/{len(pool_data)}")
 
-        logger.info(f"✅ Successfully processed {len(result.data)} V3 pools for tick data")
+        logger.info(
+            f"✅ Successfully processed {len(result.data)} V3 pools for tick data"
+        )
 
     @pytest.mark.asyncio
     async def test_single_pool_bitmap_data(self, web3_connection, test_pools):
@@ -200,9 +227,7 @@ class TestLiveV3Ticks:
         word_pivot = test_ticks[2] // tick_spacing >> 8
         word_positions = [word_pivot - 1, word_pivot, word_pivot + 1]
 
-        pool_word_positions = {
-            Web3.to_checksum_address(pool_address): word_positions
-        }
+        pool_word_positions = {Web3.to_checksum_address(pool_address): word_positions}
 
         result = await batcher.fetch_bitmap_data(pool_word_positions)
 
@@ -217,13 +242,21 @@ class TestLiveV3Ticks:
         for word_pos in word_positions:
             if word_pos in pool_data:
                 bitmap_value = pool_data[word_pos]
-                assert isinstance(bitmap_value, int), f"Bitmap value should be int, got {type(bitmap_value)}"
+                assert isinstance(bitmap_value, int), (
+                    f"Bitmap value should be int, got {type(bitmap_value)}"
+                )
 
                 # Count initialized ticks in this word
-                initialized_count = bin(bitmap_value).count('1') if bitmap_value > 0 else 0
-                print(f"✅ Word {word_pos}: Bitmap=0x{bitmap_value:064x}, Initialized ticks: {initialized_count}")
+                initialized_count = (
+                    bin(bitmap_value).count("1") if bitmap_value > 0 else 0
+                )
+                print(
+                    f"✅ Word {word_pos}: Bitmap=0x{bitmap_value:064x}, Initialized ticks: {initialized_count}"
+                )
 
-        logger.info(f"✅ {pool_info['name']}: Fetched {len(pool_data)} bitmap words at block {result.block_number}")
+        logger.info(
+            f"✅ {pool_info['name']}: Fetched {len(pool_data)} bitmap words at block {result.block_number}"
+        )
 
     @pytest.mark.asyncio
     async def test_bitmap_tick_finding(self, web3_connection, test_pools):
@@ -241,12 +274,10 @@ class TestLiveV3Ticks:
         word_positions = batcher.calculate_word_positions(
             current_tick_estimate - 1000,  # Range around current tick
             current_tick_estimate + 1000,
-            tick_spacing
+            tick_spacing,
         )
 
-        pool_word_positions = {
-            Web3.to_checksum_address(pool_address): word_positions
-        }
+        pool_word_positions = {Web3.to_checksum_address(pool_address): word_positions}
 
         result = await batcher.fetch_bitmap_data(pool_word_positions)
 
@@ -268,7 +299,9 @@ class TestLiveV3Ticks:
                 print(f"   ... and {len(initialized_ticks) - 10} more")
                 break
 
-        logger.info(f"✅ Found {len(initialized_ticks)} initialized ticks for {pool_info['name']}")
+        logger.info(
+            f"✅ Found {len(initialized_ticks)} initialized ticks for {pool_info['name']}"
+        )
 
     @pytest.mark.asyncio
     async def test_word_position_calculation(self, web3_connection):
@@ -285,20 +318,32 @@ class TestLiveV3Ticks:
 
         for lower_tick, upper_tick, description in test_cases:
             tick_spacing = 60
-            word_positions = batcher.calculate_word_positions(lower_tick, upper_tick, tick_spacing)
+            word_positions = batcher.calculate_word_positions(
+                lower_tick, upper_tick, tick_spacing
+            )
 
             assert isinstance(word_positions, list), "Should return list"
             assert len(word_positions) > 0, "Should return at least one word position"
-            assert all(isinstance(wp, int) for wp in word_positions), "All word positions should be integers"
-            assert word_positions == sorted(word_positions), "Word positions should be sorted"
+            assert all(isinstance(wp, int) for wp in word_positions), (
+                "All word positions should be integers"
+            )
+            assert word_positions == sorted(word_positions), (
+                "Word positions should be sorted"
+            )
 
             # Account for tick compression before calculating word position
             expected_lower_word = (lower_tick // tick_spacing) >> 8
             expected_upper_word = (upper_tick // tick_spacing) >> 8
-            assert word_positions[0] == expected_lower_word, f"First word position incorrect for {description}"
-            assert word_positions[-1] == expected_upper_word, f"Last word position incorrect for {description}"
+            assert word_positions[0] == expected_lower_word, (
+                f"First word position incorrect for {description}"
+            )
+            assert word_positions[-1] == expected_upper_word, (
+                f"Last word position incorrect for {description}"
+            )
 
-            print(f"✅ {description}: Ticks [{lower_tick}, {upper_tick}] → Words {word_positions}")
+            print(
+                f"✅ {description}: Ticks [{lower_tick}, {upper_tick}] → Words {word_positions}"
+            )
 
         logger.info("✅ Word position calculation tests passed")
 
@@ -310,7 +355,11 @@ class TestLiveV3Ticks:
 
         # Test with invalid pool address
         invalid_pools_ticks = {
-            Web3.to_checksum_address("0x0000000000000000000000000000000000000000"): [100, 200, 300]
+            Web3.to_checksum_address("0x0000000000000000000000000000000000000000"): [
+                100,
+                200,
+                300,
+            ]
         }
 
         tick_result = await tick_batcher.fetch_tick_data(invalid_pools_ticks)
@@ -319,13 +368,17 @@ class TestLiveV3Ticks:
         # Should handle gracefully (may succeed with zero data or fail with clear error)
         if not tick_result.success:
             assert tick_result.error, "Should provide error message"
-            logger.info(f"✅ Tick batcher correctly handled invalid pool: {tick_result.error}")
+            logger.info(
+                f"✅ Tick batcher correctly handled invalid pool: {tick_result.error}"
+            )
         else:
             logger.info("✅ Tick batcher handled invalid pool gracefully")
 
         if not bitmap_result.success:
             assert bitmap_result.error, "Should provide error message"
-            logger.info(f"✅ Bitmap batcher correctly handled invalid pool: {bitmap_result.error}")
+            logger.info(
+                f"✅ Bitmap batcher correctly handled invalid pool: {bitmap_result.error}"
+            )
         else:
             logger.info("✅ Bitmap batcher handled invalid pool gracefully")
 

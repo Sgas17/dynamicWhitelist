@@ -4,17 +4,17 @@ Tests for unified Uniswap pool pipeline.
 Focuses on live integration tests with real blockchain data across all versions.
 """
 
-import pytest
 import logging
 from pathlib import Path
 
+import pytest
+
+from src.config.manager import ConfigManager
 from src.processors.pipeline.uniswap_pool_pipeline import (
     UniswapPoolPipeline,
+    fetch_all_uniswap_pools,
     fetch_uniswap_pools,
-    fetch_all_uniswap_pools
 )
-from src.config.manager import ConfigManager
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +41,23 @@ class TestUniswapPipelineLive:
             chain="ethereum",
             version="v2",
             start_block=10000835,  # V2 deployment
-            end_block=10001000     # Small range
+            end_block=10001000,  # Small range
         )
 
-        assert result["success"], f"V2 pipeline should succeed: {result.get('error', '')}"
+        assert result["success"], (
+            f"V2 pipeline should succeed: {result.get('error', '')}"
+        )
         assert result["version"] == "v2"
         assert result["chain"] == "ethereum"
         # Note: processed_count may be 0 if no pools in this range
 
     async def test_v3_pipeline_ethereum_incremental(self, pipeline):
         """Test V3 pipeline with incremental processing."""
-        result = await pipeline.run_version_pipeline(
-            chain="ethereum",
-            version="v3"
-        )
+        result = await pipeline.run_version_pipeline(chain="ethereum", version="v3")
 
-        assert result["success"], f"V3 pipeline should succeed: {result.get('error', '')}"
+        assert result["success"], (
+            f"V3 pipeline should succeed: {result.get('error', '')}"
+        )
         assert result["version"] == "v3"
         assert result["chain"] == "ethereum"
         assert "processed_count" in result
@@ -65,12 +66,11 @@ class TestUniswapPipelineLive:
 
     async def test_v4_pipeline_ethereum_incremental(self, pipeline):
         """Test V4 pipeline with incremental processing."""
-        result = await pipeline.run_version_pipeline(
-            chain="ethereum",
-            version="v4"
-        )
+        result = await pipeline.run_version_pipeline(chain="ethereum", version="v4")
 
-        assert result["success"], f"V4 pipeline should succeed: {result.get('error', '')}"
+        assert result["success"], (
+            f"V4 pipeline should succeed: {result.get('error', '')}"
+        )
         assert result["version"] == "v4"
         assert result["chain"] == "ethereum"
         assert "processed_count" in result
@@ -92,7 +92,9 @@ class TestUniswapPipelineLive:
         for version in expected_versions:
             assert version in versions, f"Missing {version} results"
             version_result = versions[version]
-            logger.info(f"{version.upper()}: {version_result.get('processed_count', 0)} pools")
+            logger.info(
+                f"{version.upper()}: {version_result.get('processed_count', 0)} pools"
+            )
 
     async def test_convenience_functions(self):
         """Test convenience functions."""
@@ -103,7 +105,9 @@ class TestUniswapPipelineLive:
 
         # Test all versions on chain
         result = await fetch_all_uniswap_pools("ethereum")
-        assert result["overall_success"], "All versions convenience function should work"
+        assert result["overall_success"], (
+            "All versions convenience function should work"
+        )
         assert "versions" in result
 
     async def test_protocol_configurations(self, config):
@@ -114,21 +118,35 @@ class TestUniswapPipelineLive:
         for chain in chains:
             for version in versions:
                 try:
-                    config_data = config.protocols.get_protocol_config(f"uniswap_{version}", chain)
-                    assert "deployment_block" in config_data, f"Missing deployment_block for {version} on {chain}"
+                    config_data = config.protocols.get_protocol_config(
+                        f"uniswap_{version}", chain
+                    )
+                    assert "deployment_block" in config_data, (
+                        f"Missing deployment_block for {version} on {chain}"
+                    )
 
                     deployment_block = config_data["deployment_block"]
-                    assert deployment_block >= 0, f"Invalid deployment_block for {version} on {chain}"
+                    assert deployment_block >= 0, (
+                        f"Invalid deployment_block for {version} on {chain}"
+                    )
 
                     # Check addresses
                     if version == "v4":
-                        assert "pool_manager" in config_data, f"Missing pool_manager for V4 on {chain}"
+                        assert "pool_manager" in config_data, (
+                            f"Missing pool_manager for V4 on {chain}"
+                        )
                         pool_manager = config_data["pool_manager"]
-                        assert pool_manager.startswith("0x"), f"Invalid pool_manager for V4 on {chain}"
+                        assert pool_manager.startswith("0x"), (
+                            f"Invalid pool_manager for V4 on {chain}"
+                        )
                     else:
-                        assert "factory_addresses" in config_data, f"Missing factory_addresses for {version} on {chain}"
+                        assert "factory_addresses" in config_data, (
+                            f"Missing factory_addresses for {version} on {chain}"
+                        )
                         factories = config_data["factory_addresses"]
-                        assert isinstance(factories, list), f"factory_addresses should be list for {version} on {chain}"
+                        assert isinstance(factories, list), (
+                            f"factory_addresses should be list for {version} on {chain}"
+                        )
 
                     logger.info(f"{chain}/{version}: deployment={deployment_block}")
 
@@ -151,10 +169,12 @@ class TestUniswapPipelineHistorical:
             version="v2",
             from_deployment=True,
             start_block=10000835,
-            end_block=10002000  # Small historical range
+            end_block=10002000,  # Small historical range
         )
 
-        assert result["success"], f"V2 historical should succeed: {result.get('error', '')}"
+        assert result["success"], (
+            f"V2 historical should succeed: {result.get('error', '')}"
+        )
 
         if result.get("processed_count", 0) > 0:
             logger.info(f"V2 historical processed {result['processed_count']} pools")
@@ -169,7 +189,7 @@ class TestUniswapPipelineHistorical:
         version_configs = {
             "v2": {"start": 10000835, "end": 10001000},
             "v3": {"start": 12369621, "end": 12369721},
-            "v4": {"start": 21688329, "end": 21688429}
+            "v4": {"start": 21688329, "end": 21688429},
         }
 
         for version, block_config in version_configs.items():
@@ -177,11 +197,15 @@ class TestUniswapPipelineHistorical:
                 chain="ethereum",
                 version=version,
                 start_block=block_config["start"],
-                end_block=block_config["end"]
+                end_block=block_config["end"],
             )
 
-            assert result["success"], f"{version.upper()} should succeed: {result.get('error', '')}"
-            logger.info(f"{version.upper()}: {result.get('processed_count', 0)} pools in test range")
+            assert result["success"], (
+                f"{version.upper()} should succeed: {result.get('error', '')}"
+            )
+            logger.info(
+                f"{version.upper()}: {result.get('processed_count', 0)} pools in test range"
+            )
 
 
 class TestUniswapPipelineUnit:
@@ -230,5 +254,7 @@ class TestUniswapPipelineUnit:
         pipeline = UniswapPoolPipeline()
 
         # Test with invalid RPC should use fallback
-        fallback_block = pipeline._get_latest_finalized_block("http://invalid-rpc", 1000)
+        fallback_block = pipeline._get_latest_finalized_block(
+            "http://invalid-rpc", 1000
+        )
         assert fallback_block == 2000  # start + 1000

@@ -3,23 +3,24 @@ Integration tests for pool creation processors.
 Tests the full pipeline: Cryo fetch -> Process -> Store in database
 """
 
-import pytest
-from pathlib import Path
-import tempfile
 import shutil
-import polars as pl
-import ujson
+import tempfile
 from decimal import Decimal
+from pathlib import Path
+
+import polars as pl
+import pytest
+import ujson
 from sqlalchemy import create_engine, text
 
+from src.config.manager import ConfigManager
 from src.fetchers.cryo_fetcher import CryoFetcher
 from src.processors.pools.pool_processors import (
+    AerodromeV2PoolProcessor,
     UniswapV2PoolProcessor,
     UniswapV3PoolProcessor,
     UniswapV4PoolProcessor,
-    AerodromeV2PoolProcessor
 )
-from src.config.manager import ConfigManager
 
 
 class TestPoolProcessorsIntegration:
@@ -60,26 +61,32 @@ class TestPoolProcessorsIntegration:
 
             # Check if table exists before trying to delete
             try:
-                conn.execute(text(f"""
+                conn.execute(
+                    text(f"""
                     DELETE FROM network_1_dex_pools_cryo
                     WHERE address IN ('{pool_list}')
-                """))
+                """)
+                )
             except Exception as e:
                 print(f"Warning during cleanup: {e}")
 
             # Clean up from whitelist tables
             pool_list = "','".join(self.test_pools)
-            conn.execute(text(f"""
+            conn.execute(
+                text(f"""
                 DELETE FROM whitelisted_pools_cryo
                 WHERE pool_address IN ('{pool_list}')
-            """))
+            """)
+            )
 
             if self.test_tokens:
                 token_list = "','".join(self.test_tokens)
-                conn.execute(text(f"""
+                conn.execute(
+                    text(f"""
                     DELETE FROM token_whitelist_cryo
                     WHERE token_address IN ('{token_list}')
-                """))
+                """)
+                )
 
             conn.commit()
 
@@ -88,9 +95,13 @@ class TestPoolProcessorsIntegration:
         """Test fetching and processing UniswapV2 pools from Ethereum."""
         # Get Uniswap V2 config
         uniswap_v2 = self.config.protocols.get_protocol_config("uniswap_v2", "ethereum")
-        factory_addresses = self.config.protocols.get_factory_addresses("uniswap_v2", "ethereum")
+        factory_addresses = self.config.protocols.get_factory_addresses(
+            "uniswap_v2", "ethereum"
+        )
         factory_address = factory_addresses[0] if factory_addresses else None
-        deployment_block = self.config.protocols.get_deployment_block("uniswap_v2", "ethereum")
+        deployment_block = self.config.protocols.get_deployment_block(
+            "uniswap_v2", "ethereum"
+        )
 
         # Use a known block range with pool creation events
         # Block 10000835 is deployment, but first pools were created later
@@ -108,14 +119,16 @@ class TestPoolProcessorsIntegration:
         output_dir.mkdir(exist_ok=True)
 
         # PairCreated event signature for Uniswap V2
-        pair_created_event = "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
+        pair_created_event = (
+            "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9"
+        )
 
         result = await fetcher.fetch_logs(
             start_block=start_block,
             end_block=current_block,
             contracts=[factory_address],
             events=[pair_created_event],
-            output_dir=str(output_dir)
+            output_dir=str(output_dir),
         )
 
         assert result.success, f"Failed to fetch pool events: {result.error}"
@@ -135,10 +148,13 @@ class TestPoolProcessorsIntegration:
             # No pools in this range, but we know pools exist in DB
             # Just verify we can query existing pools
             with self.engine.connect() as conn:
-                result = conn.execute(text("""
+                result = conn.execute(
+                    text("""
                     SELECT COUNT(*) FROM network_1_dex_pools_cryo
                     WHERE LOWER(factory) = LOWER(:factory)
-                """), {"factory": factory_address}).fetchone()
+                """),
+                    {"factory": factory_address},
+                ).fetchone()
 
                 assert result[0] > 0, "No pools found in database for this factory"
                 print(f"Found {result[0]} existing pools in database")
@@ -174,27 +190,33 @@ class TestPoolProcessorsIntegration:
         # Store in database
         with self.engine.connect() as conn:
             for pool in processed_pools[:5]:  # Store first 5 for testing
-                conn.execute(text("""
+                conn.execute(
+                    text("""
                     INSERT INTO network_1_dex_pools_cryo
                     (address, factory, asset0, asset1, fee, creation_block, additional_data)
                     VALUES (:address, :factory, :asset0, :asset1, :fee, :creation_block, :additional_data)
                     ON CONFLICT (address) DO NOTHING
-                """), {
-                    "address": pool["address"],
-                    "factory": pool["factory"],
-                    "asset0": pool["asset0"],
-                    "asset1": pool["asset1"],
-                    "fee": pool.get("fee"),
-                    "creation_block": pool.get("creation_block"),
-                    "additional_data": ujson.dumps(pool.get("additional_data", {}))
-                })
+                """),
+                    {
+                        "address": pool["address"],
+                        "factory": pool["factory"],
+                        "asset0": pool["asset0"],
+                        "asset1": pool["asset1"],
+                        "fee": pool.get("fee"),
+                        "creation_block": pool.get("creation_block"),
+                        "additional_data": ujson.dumps(pool.get("additional_data", {})),
+                    },
+                )
             conn.commit()
 
             # Verify storage
-            result = conn.execute(text(f"""
+            result = conn.execute(
+                text(f"""
                 SELECT COUNT(*) FROM network_1_dex_pools_cryo
                 WHERE LOWER(factory) = LOWER(:factory)
-            """), {"factory": factory_address}).fetchone()
+            """),
+                {"factory": factory_address},
+            ).fetchone()
 
             assert result[0] > 0, "Pools not stored in database"
 
@@ -203,9 +225,13 @@ class TestPoolProcessorsIntegration:
         """Test fetching and processing UniswapV3 pools from Ethereum."""
         # Get Uniswap V3 config
         uniswap_v3 = self.config.protocols.get_protocol_config("uniswap_v3", "ethereum")
-        factory_addresses = self.config.protocols.get_factory_addresses("uniswap_v3", "ethereum")
+        factory_addresses = self.config.protocols.get_factory_addresses(
+            "uniswap_v3", "ethereum"
+        )
         factory_address = factory_addresses[0] if factory_addresses else None
-        deployment_block = self.config.protocols.get_deployment_block("uniswap_v3", "ethereum")
+        deployment_block = self.config.protocols.get_deployment_block(
+            "uniswap_v3", "ethereum"
+        )
 
         # Use a known block range with pool creation events
         # Block 12369621 is deployment, let's fetch first 100 blocks after deployment
@@ -222,14 +248,16 @@ class TestPoolProcessorsIntegration:
         output_dir.mkdir(exist_ok=True)
 
         # PoolCreated event signature for Uniswap V3
-        pool_created_event = "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
+        pool_created_event = (
+            "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
+        )
 
         result = await fetcher.fetch_logs(
             start_block=start_block,
             end_block=current_block,
             contracts=[factory_address],
             events=[pool_created_event],
-            output_dir=str(output_dir)
+            output_dir=str(output_dir),
         )
 
         assert result.success, f"Failed to fetch pool events: {result.error}"
@@ -246,10 +274,13 @@ class TestPoolProcessorsIntegration:
             # No pools in this range, but we know pools exist in DB
             # Just verify we can query existing pools
             with self.engine.connect() as conn:
-                result = conn.execute(text("""
+                result = conn.execute(
+                    text("""
                     SELECT COUNT(*) FROM network_1_dex_pools_cryo
                     WHERE LOWER(factory) = LOWER(:factory)
-                """), {"factory": factory_address}).fetchone()
+                """),
+                    {"factory": factory_address},
+                ).fetchone()
 
                 assert result[0] > 0, "No pools found in database for this factory"
                 print(f"Found {result[0]} existing pools in database")
@@ -281,27 +312,33 @@ class TestPoolProcessorsIntegration:
         # Store in database
         with self.engine.connect() as conn:
             for pool in processed_pools[:5]:  # Store first 5 for testing
-                conn.execute(text("""
+                conn.execute(
+                    text("""
                     INSERT INTO network_1_dex_pools_cryo
                     (address, factory, asset0, asset1, fee, tick_spacing, creation_block)
                     VALUES (:address, :factory, :asset0, :asset1, :fee, :tick_spacing, :creation_block)
                     ON CONFLICT (address) DO NOTHING
-                """), {
-                    "address": pool["address"],
-                    "factory": pool["factory"],
-                    "asset0": pool["asset0"],
-                    "asset1": pool["asset1"],
-                    "fee": pool.get("fee"),
-                    "tick_spacing": pool.get("tick_spacing"),
-                    "creation_block": pool.get("creation_block")
-                })
+                """),
+                    {
+                        "address": pool["address"],
+                        "factory": pool["factory"],
+                        "asset0": pool["asset0"],
+                        "asset1": pool["asset1"],
+                        "fee": pool.get("fee"),
+                        "tick_spacing": pool.get("tick_spacing"),
+                        "creation_block": pool.get("creation_block"),
+                    },
+                )
             conn.commit()
 
             # Verify storage
-            result = conn.execute(text(f"""
+            result = conn.execute(
+                text(f"""
                 SELECT COUNT(*) FROM network_1_dex_pools_cryo
                 WHERE LOWER(factory) = LOWER(:factory)
-            """), {"factory": factory_address}).fetchone()
+            """),
+                {"factory": factory_address},
+            ).fetchone()
 
             assert result[0] > 0, "Pools not stored in database"
 
@@ -311,7 +348,9 @@ class TestPoolProcessorsIntegration:
         # Get Uniswap V4 config
         uniswap_v4 = self.config.protocols.get_protocol_config("uniswap_v4", "ethereum")
         pool_manager = uniswap_v4.get("pool_manager")
-        deployment_block = self.config.protocols.get_deployment_block("uniswap_v4", "ethereum")
+        deployment_block = self.config.protocols.get_deployment_block(
+            "uniswap_v4", "ethereum"
+        )
 
         # Get chain config for RPC URL
         chain_config = self.config.chains.get_chain_config("ethereum")
@@ -323,7 +362,9 @@ class TestPoolProcessorsIntegration:
         output_dir.mkdir(exist_ok=True)
 
         # Initialize event signature for Uniswap V4 (confirmed from chain data)
-        initialize_event = "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438"
+        initialize_event = (
+            "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438"
+        )
 
         # V4 deployed at 21688329, first pools at 21688545 and 21689254
         # Fetch first 2000 blocks to get both pools
@@ -332,7 +373,7 @@ class TestPoolProcessorsIntegration:
             end_block=deployment_block + 2000,  # First 2000 blocks includes first pools
             contracts=[pool_manager] if pool_manager else [],
             events=[initialize_event],
-            output_dir=str(output_dir)
+            output_dir=str(output_dir),
         )
 
         if not result.success:
@@ -376,7 +417,9 @@ class TestPoolProcessorsIntegration:
         # Get Aerodrome V2 config for Base
         aerodrome = self.config.protocols.get_protocol_config("aerodrome_v2", "base")
         factory_address = aerodrome.get("pool_factory")
-        deployment_block = self.config.protocols.get_deployment_block("aerodrome_v2", "base")
+        deployment_block = self.config.protocols.get_deployment_block(
+            "aerodrome_v2", "base"
+        )
 
         # Get chain config for RPC URL
         chain_config = self.config.chains.get_chain_config("base")
@@ -392,14 +435,16 @@ class TestPoolProcessorsIntegration:
         start_block = current_block - 10000
 
         # PoolCreated event signature
-        pool_created_event = "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
+        pool_created_event = (
+            "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
+        )
 
         result = await fetcher.fetch_logs(
             start_block=start_block,
             end_block=current_block,
             contracts=[factory_address] if factory_address else [],
             events=[pool_created_event],
-            output_dir=str(output_dir)
+            output_dir=str(output_dir),
         )
 
         if not result.success:
@@ -427,7 +472,9 @@ class TestPoolProcessorsIntegration:
         # Verify Aerodrome-specific fields
         pool = processed_pools[0]
         assert "additional_data" in pool
-        assert "stable" in pool["additional_data"], "Missing 'stable' flag in Aerodrome pool"
+        assert "stable" in pool["additional_data"], (
+            "Missing 'stable' flag in Aerodrome pool"
+        )
 
         # Track for cleanup
         self.test_pools.update([p["address"] for p in processed_pools])
@@ -446,22 +493,26 @@ class TestPoolProcessorsIntegration:
             self.test_tokens.add(weth_address)
 
             # Insert test pool
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 INSERT INTO network_1_dex_pools_cryo
                 (address, factory, asset0, asset1, fee, creation_block)
                 VALUES (:address, :factory, :asset0, :asset1, :fee, :creation_block)
                 ON CONFLICT (address) DO NOTHING
-            """), {
-                "address": test_pool,
-                "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",  # V3 factory
-                "asset0": usdc_address,
-                "asset1": weth_address,
-                "fee": 3000,  # 0.3% fee
-                "creation_block": 19000000
-            })
+            """),
+                {
+                    "address": test_pool,
+                    "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",  # V3 factory
+                    "asset0": usdc_address,
+                    "asset1": weth_address,
+                    "fee": 3000,  # 0.3% fee
+                    "creation_block": 19000000,
+                },
+            )
 
             # Check if pool has trusted token
-            result = conn.execute(text(f"""
+            result = conn.execute(
+                text(f"""
                 SELECT p.address, p.asset0, p.asset1
                 FROM network_1_dex_pools_cryo p
                 JOIN trusted_tokens_cryo t ON
@@ -469,12 +520,15 @@ class TestPoolProcessorsIntegration:
                      LOWER(p.asset1) = LOWER(t.token_address))
                 WHERE t.chain_id = 1
                 AND p.address = :pool_address
-            """), {"pool_address": test_pool}).fetchone()
+            """),
+                {"pool_address": test_pool},
+            ).fetchone()
 
             assert result is not None, "Pool with trusted token not found"
 
             # Mark as whitelisted (would normally check liquidity first)
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 INSERT INTO whitelisted_pools_cryo
                 (pool_address, chain_id, token0, token1, fee,
                  liquidity_usd, max_slippage_1k, trusted_token,
@@ -482,27 +536,32 @@ class TestPoolProcessorsIntegration:
                 VALUES (:pool_address, :chain_id, :token0, :token1, :fee,
                         :liquidity_usd, :max_slippage_1k, :trusted_token,
                         :filter_pass_type, :iteration_depth)
-            """), {
-                "pool_address": test_pool,
-                "chain_id": 1,
-                "token0": usdc_address,
-                "token1": weth_address,
-                "fee": 3000,
-                "liquidity_usd": 1000000.00,  # $1M liquidity
-                "max_slippage_1k": Decimal("0.0100"),  # 1% slippage
-                "trusted_token": usdc_address,  # USDC is the trusted token
-                "filter_pass_type": "TRUSTED",
-                "iteration_depth": 0
-            })
+            """),
+                {
+                    "pool_address": test_pool,
+                    "chain_id": 1,
+                    "token0": usdc_address,
+                    "token1": weth_address,
+                    "fee": 3000,
+                    "liquidity_usd": 1000000.00,  # $1M liquidity
+                    "max_slippage_1k": Decimal("0.0100"),  # 1% slippage
+                    "trusted_token": usdc_address,  # USDC is the trusted token
+                    "filter_pass_type": "TRUSTED",
+                    "iteration_depth": 0,
+                },
+            )
 
             conn.commit()
 
             # Verify whitelist entry
-            result = conn.execute(text(f"""
+            result = conn.execute(
+                text(f"""
                 SELECT filter_pass_type, trusted_token
                 FROM whitelisted_pools_cryo
                 WHERE pool_address = :pool_address
-            """), {"pool_address": test_pool}).fetchone()
+            """),
+                {"pool_address": test_pool},
+            ).fetchone()
 
             assert result[0] == "TRUSTED"
             assert result[1] == usdc_address
@@ -520,22 +579,25 @@ class TestPoolProcessorsIntegration:
             self.test_tokens.add(new_token)
 
             # First pool: USDC-NewToken (gets whitelisted due to USDC)
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 INSERT INTO whitelisted_pools_cryo
                 (pool_address, chain_id, token0, token1, fee,
                  liquidity_usd, filter_pass_type, iteration_depth)
                 VALUES (:pool_address, :chain_id, :token0, :token1, :fee,
                         :liquidity_usd, :filter_pass_type, :iteration_depth)
-            """), {
-                "pool_address": trusted_pool,
-                "chain_id": 1,
-                "token0": usdc,
-                "token1": new_token,
-                "fee": 3000,
-                "liquidity_usd": 500000.00,
-                "filter_pass_type": "TRUSTED",
-                "iteration_depth": 0
-            })
+            """),
+                {
+                    "pool_address": trusted_pool,
+                    "chain_id": 1,
+                    "token0": usdc,
+                    "token1": new_token,
+                    "fee": 3000,
+                    "liquidity_usd": 500000.00,
+                    "filter_pass_type": "TRUSTED",
+                    "iteration_depth": 0,
+                },
+            )
 
             # Now new_token should be discoverable for network effect
             # Create another pool with new_token and another unknown token
@@ -545,21 +607,25 @@ class TestPoolProcessorsIntegration:
             self.test_pools.add(second_pool)
             self.test_tokens.add(another_token)
 
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 INSERT INTO network_1_dex_pools_cryo
                 (address, factory, asset0, asset1, fee, creation_block)
                 VALUES (:address, :factory, :asset0, :asset1, :fee, :creation_block)
-            """), {
-                "address": second_pool,
-                "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-                "asset0": new_token,
-                "asset1": another_token,
-                "fee": 3000,
-                "creation_block": 19000000
-            })
+            """),
+                {
+                    "address": second_pool,
+                    "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+                    "asset0": new_token,
+                    "asset1": another_token,
+                    "fee": 3000,
+                    "creation_block": 19000000,
+                },
+            )
 
             # Query for pools eligible for network effect
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT DISTINCT p.address
                 FROM network_1_dex_pools_cryo p
                 WHERE p.address NOT IN (
@@ -577,7 +643,8 @@ class TestPoolProcessorsIntegration:
                         SELECT DISTINCT token1 FROM whitelisted_pools_cryo WHERE chain_id = 1
                     )
                 )
-            """)).fetchall()
+            """)
+            ).fetchall()
 
             pool_addresses = [r[0] for r in result]
             assert second_pool in pool_addresses, "Network effect pool not found"
@@ -589,12 +656,17 @@ class TestPoolProcessorsIntegration:
         """Test fetching historical data with checkpoint tracking."""
         with self.engine.connect() as conn:
             # Create a processing checkpoint
-            factory_addresses = self.config.protocols.get_factory_addresses("uniswap_v3", "ethereum")
+            factory_addresses = self.config.protocols.get_factory_addresses(
+                "uniswap_v3", "ethereum"
+            )
             factory_address = factory_addresses[0] if factory_addresses else None
-            deployment_block = self.config.protocols.get_deployment_block("uniswap_v3", "ethereum")
+            deployment_block = self.config.protocols.get_deployment_block(
+                "uniswap_v3", "ethereum"
+            )
 
             # Insert checkpoint
-            conn.execute(text("""
+            conn.execute(
+                text("""
                 INSERT INTO processing_checkpoints_cryo
                 (chain_id, factory_address, process_type, start_block,
                  end_block, current_block, status)
@@ -604,25 +676,30 @@ class TestPoolProcessorsIntegration:
                 DO UPDATE SET
                     current_block = EXCLUDED.current_block,
                     updated_at = CURRENT_TIMESTAMP
-            """), {
-                "chain_id": 1,
-                "factory_address": factory_address,
-                "process_type": "HISTORICAL_FETCH",
-                "start_block": deployment_block,
-                "end_block": deployment_block + 100000,
-                "current_block": deployment_block + 50000,
-                "status": "IN_PROGRESS"
-            })
+            """),
+                {
+                    "chain_id": 1,
+                    "factory_address": factory_address,
+                    "process_type": "HISTORICAL_FETCH",
+                    "start_block": deployment_block,
+                    "end_block": deployment_block + 100000,
+                    "current_block": deployment_block + 50000,
+                    "status": "IN_PROGRESS",
+                },
+            )
 
             conn.commit()
 
             # Verify checkpoint
-            result = conn.execute(text(f"""
+            result = conn.execute(
+                text(f"""
                 SELECT current_block, status
                 FROM processing_checkpoints_cryo
                 WHERE factory_address = :factory_address
                 AND process_type = 'HISTORICAL_FETCH'
-            """), {"factory_address": factory_address}).fetchone()
+            """),
+                {"factory_address": factory_address},
+            ).fetchone()
 
             assert result[0] == deployment_block + 50000
             assert result[1] == "IN_PROGRESS"

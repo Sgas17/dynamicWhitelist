@@ -6,8 +6,8 @@ This script tests V3 pool filtering step-by-step to identify where pools are bei
 
 import asyncio
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -17,28 +17,27 @@ from src.config import ConfigManager
 from src.core.storage.postgres import PostgresStorage
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 async def main():
     """Test V3 pool filtering step by step."""
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info("V3 POOL FILTERING TRIAGE")
-    logger.info("="*80)
+    logger.info("=" * 80)
 
     config = ConfigManager()
 
     db_config = {
-        'host': config.database.POSTGRES_HOST,
-        'port': config.database.POSTGRES_PORT,
-        'user': config.database.POSTGRES_USER,
-        'password': config.database.POSTGRES_PASSWORD,
-        'database': config.database.POSTGRES_DB,
-        'pool_size': 10,
-        'pool_timeout': 10
+        "host": config.database.POSTGRES_HOST,
+        "port": config.database.POSTGRES_PORT,
+        "user": config.database.POSTGRES_USER,
+        "password": config.database.POSTGRES_PASSWORD,
+        "database": config.database.POSTGRES_DB,
+        "pool_size": 10,
+        "pool_timeout": 10,
     }
 
     storage = PostgresStorage(config=db_config)
@@ -57,7 +56,7 @@ async def main():
         """
         async with storage.pool.acquire() as conn:
             result = await conn.fetchrow(query_total)
-            total_v3 = result['total']
+            total_v3 = result["total"]
             logger.info(f"  Total V3 pools: {total_v3}")
 
         # Step 2: Get sample V3 pools
@@ -113,14 +112,20 @@ async def main():
         )
         """
         async with storage.pool.acquire() as conn:
-            results = await conn.fetch(query_with_trusted, list(trusted_token_addresses))
+            results = await conn.fetch(
+                query_with_trusted, list(trusted_token_addresses)
+            )
             logger.info(f"  V3 pools with trusted token: {len(results)}")
 
             # Show first 5
             logger.info(f"\n  First 5 pools:")
             for row in results[:5]:
-                token0_trusted = "✓" if row['token0'] in trusted_token_addresses else "✗"
-                token1_trusted = "✓" if row['token1'] in trusted_token_addresses else "✗"
+                token0_trusted = (
+                    "✓" if row["token0"] in trusted_token_addresses else "✗"
+                )
+                token1_trusted = (
+                    "✓" if row["token1"] in trusted_token_addresses else "✗"
+                )
                 logger.info(f"    {row['address']}")
                 logger.info(f"      Token0: {row['token0']} {token0_trusted}")
                 logger.info(f"      Token1: {row['token1']} {token1_trusted}")
@@ -134,17 +139,21 @@ async def main():
             logger.info(f"  Tick spacing: {test_pool['tick_spacing']}")
 
             # Try to load from Reth DB
-            from src.processors.pools.reth_snapshot_loader import RethSnapshotLoader
             import os
 
-            reth_db_path = os.getenv('RETH_DB_PATH', '/var/lib/docker/volumes/eth-docker_reth-el-data/_data/db')
+            from src.processors.pools.reth_snapshot_loader import RethSnapshotLoader
+
+            reth_db_path = os.getenv(
+                "RETH_DB_PATH",
+                "/var/lib/docker/volumes/eth-docker_reth-el-data/_data/db",
+            )
             logger.info(f"  Reth DB path: {reth_db_path}")
 
             try:
                 loader = RethSnapshotLoader(reth_db_path)
                 pool_address, tick_data, block_number = loader.load_v3_pool_snapshot(
-                    pool_address=test_pool['address'],
-                    tick_spacing=test_pool['tick_spacing']
+                    pool_address=test_pool["address"],
+                    tick_spacing=test_pool["tick_spacing"],
                 )
                 logger.info(f"  ✅ Successfully loaded tick data")
                 logger.info(f"    Block: {block_number}")
@@ -164,8 +173,8 @@ async def main():
             from src.whitelist.v3_math import calculate_v3_liquidity_usd
 
             # We need token prices - let's use placeholder values for WETH/USDC
-            token0 = test_pool['token0']
-            token1 = test_pool['token1']
+            token0 = test_pool["token0"]
+            token1 = test_pool["token1"]
 
             # Check if tokens are WETH or USDC
             weth = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
@@ -176,9 +185,9 @@ async def main():
             if token0.lower() == usdc.lower() or token1.lower() == usdc.lower():
                 logger.info(f"  Pool contains USDC")
 
-        logger.info("\n" + "="*80)
+        logger.info("\n" + "=" * 80)
         logger.info("TRIAGE COMPLETE")
-        logger.info("="*80)
+        logger.info("=" * 80)
 
         return 0
 

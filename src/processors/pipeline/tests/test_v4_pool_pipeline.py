@@ -4,13 +4,13 @@ Tests for V4 pool pipeline.
 Focuses on live integration tests with real blockchain data.
 """
 
-import pytest
 import logging
 from pathlib import Path
 
-from src.processors.pipeline.v4_pool_pipeline import V4PoolPipeline, fetch_v4_pools
-from src.config.manager import ConfigManager
+import pytest
 
+from src.config.manager import ConfigManager
+from src.processors.pipeline.v4_pool_pipeline import V4PoolPipeline, fetch_v4_pools
 
 logger = logging.getLogger(__name__)
 

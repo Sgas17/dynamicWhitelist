@@ -7,13 +7,13 @@ using a pre-compiled Solidity contract via eth.call().
 
 import json
 import os
-from typing import Dict, List, Union, Optional
 from datetime import datetime, timezone
+from typing import Dict, List, Optional, Union
 
-from web3 import Web3
 from eth_abi import decode
+from web3 import Web3
 
-from .base import ContractBatcher, BatchResult, BatchConfig, BatchError
+from .base import BatchConfig, BatchError, BatchResult, ContractBatcher
 
 
 class UniswapV2ReservesBatcher(ContractBatcher):
@@ -28,7 +28,7 @@ class UniswapV2ReservesBatcher(ContractBatcher):
         self,
         web3: Web3,
         chain_id: Optional[int] = None,
-        config: Optional[BatchConfig] = None
+        config: Optional[BatchConfig] = None,
     ):
         """
         Initialize the reserves batcher.
@@ -64,10 +64,7 @@ class UniswapV2ReservesBatcher(ContractBatcher):
 
             # Construct path to contract file
             contract_path = os.path.join(
-                os.path.dirname(__file__),
-                "contracts",
-                "ethereum",
-                contract_file
+                os.path.dirname(__file__), "contracts", "ethereum", contract_file
             )
 
             # Load and parse contract JSON
@@ -80,9 +77,7 @@ class UniswapV2ReservesBatcher(ContractBatcher):
             raise BatchError(f"Failed to load contract bytecode: {e}")
 
     async def batch_call(
-        self,
-        pair_addresses: List[str],
-        block_identifier: Union[int, str] = 'latest'
+        self, pair_addresses: List[str], block_identifier: Union[int, str] = "latest"
     ) -> BatchResult:
         """
         Fetch reserves for multiple Uniswap V2 pairs.
@@ -99,9 +94,7 @@ class UniswapV2ReservesBatcher(ContractBatcher):
             validated_addresses = self._validate_addresses(pair_addresses)
             if not validated_addresses:
                 return BatchResult(
-                    success=False,
-                    data={},
-                    error="No valid addresses provided"
+                    success=False, data={}, error="No valid addresses provided"
                 )
 
             # Get current block number
@@ -121,21 +114,15 @@ class UniswapV2ReservesBatcher(ContractBatcher):
                 success=True,
                 data=reserves_data,
                 block_number=current_block,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
             )
 
         except Exception as e:
             self.logger.error(f"Batch call failed: {e}")
-            return BatchResult(
-                success=False,
-                data={},
-                error=str(e)
-            )
+            return BatchResult(success=False, data={}, error=str(e))
 
     def _decode_reserves_response(
-        self,
-        raw_response: bytes,
-        pair_addresses: List[str]
+        self, raw_response: bytes, pair_addresses: List[str]
     ) -> Dict[str, Dict[str, str]]:
         """
         Decode the raw response from the reserves batch call.
@@ -161,9 +148,7 @@ class UniswapV2ReservesBatcher(ContractBatcher):
             raise BatchError(f"Failed to decode reserves response: {e}")
 
     def _decode_ethereum_reserves(
-        self,
-        raw_response: bytes,
-        pair_addresses: List[str]
+        self, raw_response: bytes, pair_addresses: List[str]
     ) -> Dict[str, Dict[str, str]]:
         """
         Decode reserves response for Ethereum mainnet format.
@@ -182,17 +167,17 @@ class UniswapV2ReservesBatcher(ContractBatcher):
             if i < len(reserves_data):
                 reserve_bytes = reserves_data[i].hex()
                 decoded_reserves[pair_address.lower()] = {
-                    'reserve0': reserve_bytes[0:28],
-                    'reserve1': reserve_bytes[28:56],
-                    'block_timestamp_last': int(reserve_bytes[56:64], 16) if len(reserve_bytes) > 56 else 0
+                    "reserve0": reserve_bytes[0:28],
+                    "reserve1": reserve_bytes[28:56],
+                    "block_timestamp_last": int(reserve_bytes[56:64], 16)
+                    if len(reserve_bytes) > 56
+                    else 0,
                 }
 
         return decoded_reserves
 
     def _decode_base_reserves(
-        self,
-        raw_response: bytes,
-        pair_addresses: List[str]
+        self, raw_response: bytes, pair_addresses: List[str]
     ) -> Dict[str, Dict[str, str]]:
         """
         Decode reserves response for Base chain format.
@@ -210,17 +195,15 @@ class UniswapV2ReservesBatcher(ContractBatcher):
         for i, pair_address in enumerate(pair_addresses):
             if i < len(reserves_data):
                 decoded_reserves[pair_address.lower()] = {
-                    'reserve0': reserves_data[i][0].hex(),
-                    'reserve1': reserves_data[i][1].hex(),
-                    'block_timestamp_last': 0  # Base format doesn't include timestamp
+                    "reserve0": reserves_data[i][0].hex(),
+                    "reserve1": reserves_data[i][1].hex(),
+                    "block_timestamp_last": 0,  # Base format doesn't include timestamp
                 }
 
         return decoded_reserves
 
     async def fetch_reserves_chunked(
-        self,
-        pair_addresses: List[str],
-        block_identifier: Union[int, str] = 'latest'
+        self, pair_addresses: List[str], block_identifier: Union[int, str] = "latest"
     ) -> Dict[str, Dict[str, str]]:
         """
         Fetch reserves for a large number of pairs using chunking.
@@ -235,10 +218,14 @@ class UniswapV2ReservesBatcher(ContractBatcher):
         all_reserves = {}
         chunks = self._chunk_addresses(pair_addresses)
 
-        self.logger.info(f"Fetching reserves for {len(pair_addresses)} pairs in {len(chunks)} chunks")
+        self.logger.info(
+            f"Fetching reserves for {len(pair_addresses)} pairs in {len(chunks)} chunks"
+        )
 
         for i, chunk in enumerate(chunks):
-            self.logger.debug(f"Processing chunk {i + 1}/{len(chunks)} with {len(chunk)} pairs")
+            self.logger.debug(
+                f"Processing chunk {i + 1}/{len(chunks)} with {len(chunk)} pairs"
+            )
 
             result = await self.batch_call(chunk, block_identifier)
 
@@ -255,8 +242,8 @@ class UniswapV2ReservesBatcher(ContractBatcher):
 async def fetch_uniswap_v2_reserves(
     web3: Web3,
     pair_addresses: List[str],
-    block_identifier: Union[int, str] = 'latest',
-    batch_size: int = 100
+    block_identifier: Union[int, str] = "latest",
+    batch_size: int = 100,
 ) -> Dict[str, Dict[str, str]]:
     """
     Convenience function to fetch Uniswap V2 reserves.

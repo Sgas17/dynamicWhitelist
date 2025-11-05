@@ -11,48 +11,46 @@ from scratch or update existing ones.
 """
 
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Set
-from datetime import datetime, UTC
-from threading import Lock
-from weakref import WeakSet
 from collections import OrderedDict
+from datetime import UTC, datetime
+from pathlib import Path
+from threading import Lock
+from typing import Any, Dict, List, Optional, Set
+from weakref import WeakSet
 
-import polars as pl
 import eth_abi.abi as eth_abi
-from hexbytes import HexBytes
-from eth_utils.address import to_checksum_address
-
-
-from degenbot.types import BoundedCache 
+import polars as pl
+from degenbot.types import BoundedCache
+from degenbot.uniswap.v3_liquidity_pool import UniswapV3Pool
 from degenbot.uniswap.v3_types import (
     UniswapV3BitmapAtWord,
     UniswapV3LiquidityAtTick,
-    UniswapV3PoolState,
     UniswapV3PoolLiquidityMappingUpdate,
+    UniswapV3PoolState,
 )
-from degenbot.uniswap.v3_liquidity_pool import UniswapV3Pool
+from degenbot.uniswap.v4_liquidity_pool import UniswapV4Pool
 from degenbot.uniswap.v4_types import (
     UniswapV4BitmapAtWord,
     UniswapV4LiquidityAtTick,
-    UniswapV4PoolState,
     UniswapV4PoolLiquidityMappingUpdate,
+    UniswapV4PoolState,
 )
-from degenbot.uniswap.v4_liquidity_pool import UniswapV4Pool
+from eth_utils.address import to_checksum_address
+from hexbytes import HexBytes
 
-from src.processors.base import BaseProcessor
-from src.core.storage.timescaledb import get_timescale_engine
-from src.core.storage.postgres_pools import get_pools_by_factory
 from src.core.storage.postgres_liquidity import (
+    get_snapshot_statistics,
+    load_liquidity_snapshot,
     setup_liquidity_snapshots_table,
     store_liquidity_snapshot,
-    load_liquidity_snapshot,
-    get_snapshot_statistics,
 )
+from src.core.storage.postgres_pools import get_pools_by_factory
+from src.core.storage.timescaledb import get_timescale_engine
 from src.core.storage.timescaledb_liquidity import (
     setup_liquidity_updates_table,
     store_liquidity_updates_batch,
 )
+from src.processors.base import BaseProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +62,7 @@ class MockV3LiquidityPool(UniswapV3Pool):
     This class uses degenbot's tick map update logic without
     needing a full pool instance.
     """
+
     def __init__(self):
         self._initial_state_block = 0
         self._state_cache = BoundedCache(max_items=8)
@@ -88,6 +87,7 @@ class MockV4LiquidityPool(UniswapV4Pool):
     This class uses degenbot's V4 tick map update logic without
     needing a full pool instance.
     """
+
     def __init__(self):
         self._initial_state_block = 0
         self._state_cache = BoundedCache(max_items=8)
@@ -135,7 +135,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
             enable_blacklist: Whether to filter blacklisted pools
         """
         super().__init__(chain=chain, protocol=protocol)
-        
+
         # Set chain_id using ConfigManager (available after super().__init__)
         self.chain_id = self.config.chains.get_chain_id(chain)
         self.block_chunk_size = block_chunk_size
@@ -251,7 +251,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
             factory_pools = get_pools_by_factory(
                 factory_address=factory.lower(),  # Normalize to lowercase for database query
                 chain_id=self.chain_id,
-                active_only=self.enable_blacklist  # If blacklist enabled, only get active pools
+                active_only=self.enable_blacklist,  # If blacklist enabled, only get active pools
             )
 
             for pool in factory_pools:
@@ -261,10 +261,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
         return pools
 
     def _get_pools_with_events(
-        self,
-        events_path: Path,
-        start_block: int = 0,
-        end_block: Optional[int] = None
+        self, events_path: Path, start_block: int = 0, end_block: Optional[int] = None
     ) -> Set[str]:
         """
         Get set of pool addresses that have liquidity events in block range.
@@ -296,7 +293,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
         for addr in binary_addresses:
             if isinstance(addr, bytes):
                 # Convert bytes to lowercase hex string with 0x prefix
-                hex_addr = ('0x' + addr.hex()).lower()
+                hex_addr = ("0x" + addr.hex()).lower()
                 pools_with_events.add(hex_addr)
             else:
                 # Already a string, convert to lowercase
@@ -306,9 +303,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
         return pools_with_events
 
     def _decode_liquidity_events(
-        self,
-        events_df: pl.DataFrame,
-        protocol: str
+        self, events_df: pl.DataFrame, protocol: str
     ) -> List[Dict[str, Any]]:
         """
         Decode liquidity events from parquet dataframe.
@@ -383,7 +378,9 @@ class UnifiedLiquidityProcessor(BaseProcessor):
                 if isinstance(tx_hash, bytes):
                     tx_hash_str = "0x" + tx_hash.hex()
                 elif tx_hash:
-                    tx_hash_str = tx_hash if tx_hash.startswith("0x") else "0x" + tx_hash
+                    tx_hash_str = (
+                        tx_hash if tx_hash.startswith("0x") else "0x" + tx_hash
+                    )
                 else:
                     tx_hash_str = "0x" + "0" * 64
 
@@ -396,22 +393,29 @@ class UnifiedLiquidityProcessor(BaseProcessor):
                 else:
                     pool_addr_str = str(pool_addr).lower()
 
-                decoded_events.append({
-                    "pool_address": pool_addr_str,
-                    "block_number": row["block_number"],
-                    "transaction_index": row["transaction_index"],
-                    "log_index": row.get("log_index", 0),
-                    "transaction_hash": tx_hash_str,
-                    "event_type": event_type,
-                    "tick_lower": tick_lower,
-                    "tick_upper": tick_upper,
-                    "liquidity_delta": int(liquidity_delta),
-                    "sender_address": to_checksum_address(sender) if sender else None,
-                    "amount0": int(amount0),
-                    "amount1": int(amount1),
-                    "event_time": datetime.fromtimestamp(row.get("timestamp", 0), UTC)
-                    if row.get("timestamp") else datetime.now(UTC),
-                })
+                decoded_events.append(
+                    {
+                        "pool_address": pool_addr_str,
+                        "block_number": row["block_number"],
+                        "transaction_index": row["transaction_index"],
+                        "log_index": row.get("log_index", 0),
+                        "transaction_hash": tx_hash_str,
+                        "event_type": event_type,
+                        "tick_lower": tick_lower,
+                        "tick_upper": tick_upper,
+                        "liquidity_delta": int(liquidity_delta),
+                        "sender_address": to_checksum_address(sender)
+                        if sender
+                        else None,
+                        "amount0": int(amount0),
+                        "amount1": int(amount1),
+                        "event_time": datetime.fromtimestamp(
+                            row.get("timestamp", 0), UTC
+                        )
+                        if row.get("timestamp")
+                        else datetime.now(UTC),
+                    }
+                )
             except Exception as e:
                 logger.error(f"Error decoding event: {e}")
                 continue
@@ -428,7 +432,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
         liquidity_delta: int,
         tick_spacing: int,
         block_number: int,
-        protocol: str = "uniswap_v3"
+        protocol: str = "uniswap_v3",
     ):
         """
         Update tick_bitmap and tick_data using degenbot logic.
@@ -470,14 +474,8 @@ class UnifiedLiquidityProcessor(BaseProcessor):
             "liquidity": 2**256 - 1,
             "sqrt_price_x96": 0,
             "tick": 0,
-            "tick_bitmap": {
-                int(k): BitmapAtWord(**v)
-                for k, v in tick_bitmap.items()
-            },
-            "tick_data": {
-                int(k): LiquidityAtTick(**v)
-                for k, v in tick_data.items()
-            },
+            "tick_bitmap": {int(k): BitmapAtWord(**v) for k, v in tick_bitmap.items()},
+            "tick_data": {int(k): LiquidityAtTick(**v) for k, v in tick_data.items()},
         }
 
         # V4 uses 'id' field instead of 'address'
@@ -489,14 +487,20 @@ class UnifiedLiquidityProcessor(BaseProcessor):
         lp_helper._state = PoolState(**state_kwargs)
 
         # Debug logging before update
-        logger.debug(f"  Applying update: block={block_number}, liquidity_delta={liquidity_delta}, "
-                     f"tick_lower={tick_lower}, tick_upper={tick_upper}")
+        logger.debug(
+            f"  Applying update: block={block_number}, liquidity_delta={liquidity_delta}, "
+            f"tick_lower={tick_lower}, tick_upper={tick_upper}"
+        )
 
         # Check current state at ticks
         current_lower = tick_data.get(tick_lower, {})
         current_upper = tick_data.get(tick_upper, {})
-        logger.debug(f"  Before update - Lower tick {tick_lower}: gross={current_lower.get('liquidity_gross', 0)}, net={current_lower.get('liquidity_net', 0)}")
-        logger.debug(f"  Before update - Upper tick {tick_upper}: gross={current_upper.get('liquidity_gross', 0)}, net={current_upper.get('liquidity_net', 0)}")
+        logger.debug(
+            f"  Before update - Lower tick {tick_lower}: gross={current_lower.get('liquidity_gross', 0)}, net={current_lower.get('liquidity_net', 0)}"
+        )
+        logger.debug(
+            f"  Before update - Upper tick {tick_upper}: gross={current_upper.get('liquidity_gross', 0)}, net={current_upper.get('liquidity_net', 0)}"
+        )
 
         # Apply liquidity update
         try:
@@ -510,20 +514,20 @@ class UnifiedLiquidityProcessor(BaseProcessor):
             )
         except Exception as e:
             logger.error(f"  ❌ ERROR applying update: {e}")
-            logger.error(f"  Event details: block={block_number}, liquidity_delta={liquidity_delta}, "
-                        f"tick_lower={tick_lower}, tick_upper={tick_upper}")
+            logger.error(
+                f"  Event details: block={block_number}, liquidity_delta={liquidity_delta}, "
+                f"tick_lower={tick_lower}, tick_upper={tick_upper}"
+            )
             logger.error(f"  Current lower tick {tick_lower}: {current_lower}")
             logger.error(f"  Current upper tick {tick_upper}: {current_upper}")
             raise
 
         # Extract updated state (full degenbot format)
         updated_bitmap = {
-            k: v.model_dump(mode="json")
-            for k, v in lp_helper.tick_bitmap.items()
+            k: v.model_dump(mode="json") for k, v in lp_helper.tick_bitmap.items()
         }
         updated_tick_data_full = {
-            k: v.model_dump(mode="json")
-            for k, v in lp_helper.tick_data.items()
+            k: v.model_dump(mode="json") for k, v in lp_helper.tick_data.items()
         }
 
         # Convert to simplified format (use snake_case - Python standard)
@@ -587,16 +591,13 @@ class UnifiedLiquidityProcessor(BaseProcessor):
 
         # Get pools with events in this range
         pools_with_events = self._get_pools_with_events(
-            events_path,
-            start_block=start_block,
-            end_block=end_block
+            events_path, start_block=start_block, end_block=end_block
         )
 
         # Filter to only pools we track
         tracked_pools_with_events = pools_with_events & set(pool_data.keys())
         logger.info(
-            f"Processing {len(tracked_pools_with_events)} tracked pools "
-            f"with events"
+            f"Processing {len(tracked_pools_with_events)} tracked pools with events"
         )
 
         # Load existing snapshots or initialize empty
@@ -625,10 +626,14 @@ class UnifiedLiquidityProcessor(BaseProcessor):
 
         # Convert binary addresses to lowercase hex strings for filtering (to match database format)
         events_df = events_df.with_columns(
-            pl.col("address").map_elements(
-                lambda x: ('0x' + x.hex()).lower() if isinstance(x, bytes) else x.lower(),
-                return_dtype=pl.String
-            ).alias("address")
+            pl.col("address")
+            .map_elements(
+                lambda x: ("0x" + x.hex()).lower()
+                if isinstance(x, bytes)
+                else x.lower(),
+                return_dtype=pl.String,
+            )
+            .alias("address")
         )
 
         last_event_block = events_df.select(pl.max("block_number")).item()
@@ -643,13 +648,14 @@ class UnifiedLiquidityProcessor(BaseProcessor):
         pools_updated = set()
         all_decoded_events = []
 
-        for chunk_start in range(start_block, last_event_block + 1, self.block_chunk_size):
+        for chunk_start in range(
+            start_block, last_event_block + 1, self.block_chunk_size
+        ):
             chunk_end = min(chunk_start + self.block_chunk_size, last_event_block + 1)
 
             # Get events for this chunk
             chunk_events = (
-                events_df
-                .filter(pl.col("block_number") >= chunk_start)
+                events_df.filter(pl.col("block_number") >= chunk_start)
                 .filter(pl.col("block_number") < chunk_end)
                 .filter(pl.col("address").is_in(list(tracked_pools_with_events)))
             )
@@ -671,19 +677,28 @@ class UnifiedLiquidityProcessor(BaseProcessor):
             for pool_address in set(e["pool_address"] for e in decoded_events):
                 # Debug: Check if address format matches
                 if pool_address not in pool_data:
-                    logger.error(f"Pool address {pool_address} not found in pool_data keys")
+                    logger.error(
+                        f"Pool address {pool_address} not found in pool_data keys"
+                    )
                     logger.error(f"Sample pool_data keys: {list(pool_data.keys())[:5]}")
-                    logger.error(f"Looking for address format: {type(pool_address)}, value: {pool_address}")
+                    logger.error(
+                        f"Looking for address format: {type(pool_address)}, value: {pool_address}"
+                    )
                     continue
                 pool = pool_data[pool_address]
-                pool_events = [e for e in decoded_events if e["pool_address"] == pool_address]
+                pool_events = [
+                    e for e in decoded_events if e["pool_address"] == pool_address
+                ]
 
                 # Get current snapshot state
                 tick_bitmap = liquidity_snapshots[pool_address]["tick_bitmap"]
                 tick_data = liquidity_snapshots[pool_address]["tick_data"]
 
                 # Apply each event
-                for event in sorted(pool_events, key=lambda x: (x["block_number"], x["transaction_index"])):
+                for event in sorted(
+                    pool_events,
+                    key=lambda x: (x["block_number"], x["transaction_index"]),
+                ):
                     self._update_tick_maps(
                         tick_bitmap=tick_bitmap,
                         tick_data=tick_data,
@@ -692,7 +707,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
                         liquidity_delta=event["liquidity_delta"],
                         tick_spacing=pool["tick_spacing"],
                         block_number=event["block_number"],
-                        protocol=protocol
+                        protocol=protocol,
                     )
 
                 pools_updated.add(pool_address)
@@ -720,9 +735,7 @@ class UnifiedLiquidityProcessor(BaseProcessor):
         if all_decoded_events:
             logger.info(f"Storing {len(all_decoded_events)} events to TimescaleDB...")
             stored_count = store_liquidity_updates_batch(
-                all_decoded_events,
-                chain_id=self.chain_id,
-                batch_size=1000
+                all_decoded_events, chain_id=self.chain_id, batch_size=1000
             )
             logger.info(f"Stored {stored_count} events to TimescaleDB")
 
@@ -745,7 +758,9 @@ class UnifiedLiquidityProcessor(BaseProcessor):
 
     def _cleanup_old_parquet_files(self, parquet_path: Path, keep_latest: bool = True):
         """Clean up old parquet files after processing."""
-        parquet_files = sorted(parquet_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime)
+        parquet_files = sorted(
+            parquet_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime
+        )
 
         if keep_latest and len(parquet_files) > 1:
             files_to_delete = parquet_files[:-1]  # Keep latest

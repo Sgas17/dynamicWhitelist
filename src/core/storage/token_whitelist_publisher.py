@@ -10,10 +10,10 @@ Integration with WhitelistPublisher:
     Import and use in src/core/storage/whitelist_publisher.py _publish_to_nats() method.
 """
 
-import logging
-from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional, Set
 import json
+import logging
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional, Set
 
 import nats
 
@@ -70,7 +70,7 @@ class TokenWhitelistNatsPublisher:
         chain: str,
         tokens: Dict[str, Dict[str, Any]],
         publish_full: bool = True,
-        publish_deltas: bool = True
+        publish_deltas: bool = True,
     ) -> Dict[str, bool]:
         """
         Publish token whitelist to NATS topics.
@@ -146,7 +146,7 @@ class TokenWhitelistNatsPublisher:
         chain: str,
         tokens: Dict[str, Dict[str, Any]],
         timestamp: str,
-        filter_counts: Dict[str, int]
+        filter_counts: Dict[str, int],
     ) -> bool:
         """Publish complete token whitelist."""
         try:
@@ -156,8 +156,8 @@ class TokenWhitelistNatsPublisher:
                 "tokens": tokens,
                 "metadata": {
                     "total_count": len(tokens),
-                    "filter_counts": filter_counts
-                }
+                    "filter_counts": filter_counts,
+                },
             }
             full_subject = f"whitelist.tokens.{chain}.full"
 
@@ -175,10 +175,7 @@ class TokenWhitelistNatsPublisher:
             return False
 
     async def _publish_add_delta(
-        self,
-        chain: str,
-        added_tokens: Dict[str, Dict[str, Any]],
-        timestamp: str
+        self, chain: str, added_tokens: Dict[str, Dict[str, Any]], timestamp: str
     ) -> bool:
         """Publish newly added tokens."""
         try:
@@ -186,7 +183,7 @@ class TokenWhitelistNatsPublisher:
                 "chain": chain,
                 "timestamp": timestamp,
                 "action": "add",
-                "tokens": added_tokens
+                "tokens": added_tokens,
             }
             add_subject = f"whitelist.tokens.{chain}.add"
 
@@ -204,10 +201,7 @@ class TokenWhitelistNatsPublisher:
             return False
 
     async def _publish_remove_delta(
-        self,
-        chain: str,
-        removed_addresses: List[str],
-        timestamp: str
+        self, chain: str, removed_addresses: List[str], timestamp: str
     ) -> bool:
         """Publish removed token addresses."""
         try:
@@ -215,7 +209,7 @@ class TokenWhitelistNatsPublisher:
                 "chain": chain,
                 "timestamp": timestamp,
                 "action": "remove",
-                "token_addresses": removed_addresses
+                "token_addresses": removed_addresses,
             }
             remove_subject = f"whitelist.tokens.{chain}.remove"
 
@@ -233,14 +227,13 @@ class TokenWhitelistNatsPublisher:
             return False
 
     def _calculate_filter_counts(
-        self,
-        tokens: Dict[str, Dict[str, Any]]
+        self, tokens: Dict[str, Dict[str, Any]]
     ) -> Dict[str, int]:
         """Calculate counts per filter type."""
         filter_counts: Dict[str, int] = {}
 
         for token_data in tokens.values():
-            filters = token_data.get('filters', [])
+            filters = token_data.get("filters", [])
             for filter_type in filters:
                 filter_counts[filter_type] = filter_counts.get(filter_type, 0) + 1
 
@@ -251,7 +244,7 @@ class TokenWhitelistNatsPublisher:
 async def publish_token_whitelist(
     chain: str,
     tokens: Dict[str, Dict[str, Any]],
-    nats_url: str = "nats://localhost:4222"
+    nats_url: str = "nats://localhost:4222",
 ) -> Dict[str, bool]:
     """
     Standalone function to publish token whitelist.

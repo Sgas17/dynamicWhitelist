@@ -5,19 +5,20 @@ This module tests the UniswapV4TickBatcher with real blockchain calls
 to verify tick data fetching works end-to-end.
 """
 
-import pytest
 import logging
-from web3 import Web3
 import sys
 from pathlib import Path
+
+import pytest
+from web3 import Web3
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.config import ConfigManager
-from src.batchers.uniswap_v4_ticks import UniswapV4TickBatcher, UniswapV4BitmapBatcher
 from src.batchers.base import BatchConfig
+from src.batchers.uniswap_v4_ticks import UniswapV4BitmapBatcher, UniswapV4TickBatcher
+from src.config import ConfigManager
 
 # Set logging level for detailed output
 logging.getLogger().setLevel(logging.INFO)
@@ -29,8 +30,8 @@ def web3_connection():
     """Setup Web3 connection using config manager."""
     try:
         config_manager = ConfigManager()
-        chain_config = config_manager.chains.get_chain_config('ethereum')
-        rpc_url = chain_config['rpc_url']
+        chain_config = config_manager.chains.get_chain_config("ethereum")
+        rpc_url = chain_config["rpc_url"]
 
         logger.info(f"Connecting to: {rpc_url}")
         web3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -57,14 +58,16 @@ def test_pool_id():
 def test_ticks():
     """Test tick values around current price."""
     # These should be near the current tick for ETH/USDC
-    return [-193250,-193200, -193150, -193100, -193050 ]
+    return [-193250, -193200, -193150, -193100, -193050]
 
 
 class TestLiveV4Ticks:
     """Live test class for Uniswap V4 tick data batch fetcher."""
 
     @pytest.mark.asyncio
-    async def test_fetch_single_pool_ticks(self, web3_connection, test_pool_id, test_ticks):
+    async def test_fetch_single_pool_ticks(
+        self, web3_connection, test_pool_id, test_ticks
+    ):
         """Test fetching tick data for a single pool."""
         batcher = UniswapV4TickBatcher(web3_connection)
 
@@ -77,33 +80,41 @@ class TestLiveV4Ticks:
         assert result.success, f"Tick fetch failed: {result.error}"
         assert result.data, "No data returned"
         assert test_pool_id in result.data, f"Pool {test_pool_id} not in results"
-        
+
         pool_tick_data = result.data[test_pool_id]
-        assert len(pool_tick_data) == len(test_ticks), f"Expected {len(test_ticks)} ticks, got {len(pool_tick_data)}"
+        assert len(pool_tick_data) == len(test_ticks), (
+            f"Expected {len(test_ticks)} ticks, got {len(pool_tick_data)}"
+        )
 
         # Verify tick data structure - pool_tick_data is a dict[tick, TickLiquidityInfo]
         for tick, tick_info in pool_tick_data.items():
-            assert hasattr(tick_info, 'tick'), "Missing tick attribute"
-            assert hasattr(tick_info, 'liquidity_gross'), "Missing liquidity_gross"
-            assert hasattr(tick_info, 'liquidity_net'), "Missing liquidity_net"
-            assert hasattr(tick_info, 'is_initialized'), "Missing is_initialized"
+            assert hasattr(tick_info, "tick"), "Missing tick attribute"
+            assert hasattr(tick_info, "liquidity_gross"), "Missing liquidity_gross"
+            assert hasattr(tick_info, "liquidity_net"), "Missing liquidity_net"
+            assert hasattr(tick_info, "is_initialized"), "Missing is_initialized"
 
             print(f"✅ Tick {tick_info.tick}:")
             print(f"   Liquidity Gross: {tick_info.liquidity_gross}")
             print(f"   Liquidity Net: {tick_info.liquidity_net}")
             print(f"   Initialized: {tick_info.is_initialized}")
 
-        logger.info(f"✅ Successfully fetched {len(pool_tick_data)} ticks for pool {test_pool_id}")
+        logger.info(
+            f"✅ Successfully fetched {len(pool_tick_data)} ticks for pool {test_pool_id}"
+        )
 
     @pytest.mark.asyncio
-    async def test_fetch_multiple_pools(self, web3_connection, test_pool_id, test_ticks):
+    async def test_fetch_multiple_pools(
+        self, web3_connection, test_pool_id, test_ticks
+    ):
         """Test fetching tick data for multiple pools."""
         batcher = UniswapV4TickBatcher(web3_connection)
 
         # Use same pool with different tick ranges for testing
         pool_ticks = {
             test_pool_id: test_ticks[:3],  # First 3 ticks
-            test_pool_id + "_range2": test_ticks[3:],  # Last 2 ticks (fake pool for testing)
+            test_pool_id + "_range2": test_ticks[
+                3:
+            ],  # Last 2 ticks (fake pool for testing)
         }
 
         result = await batcher.fetch_tick_data({test_pool_id: test_ticks[:3]})
@@ -126,7 +137,7 @@ class TestLiveV4Ticks:
 
         # Should succeed with empty data
         assert result.success, "Empty tick list should succeed"
-        
+
         logger.info("✅ Correctly handled empty tick list")
 
     @pytest.mark.asyncio
@@ -136,14 +147,20 @@ class TestLiveV4Ticks:
 
         # Mix valid and potentially invalid ticks
         pool_ticks = {
-            test_pool_id: [-193100, 999999, -999999]  # Middle ones might be out of range
+            test_pool_id: [
+                -193100,
+                999999,
+                -999999,
+            ]  # Middle ones might be out of range
         }
 
         result = await batcher.fetch_tick_data(pool_ticks)
 
         # Should either succeed with data or fail gracefully
         if result.success:
-            logger.info(f"✅ Fetched data for {len(result.data.get(test_pool_id, []))} ticks")
+            logger.info(
+                f"✅ Fetched data for {len(result.data.get(test_pool_id, []))} ticks"
+            )
         else:
             logger.info(f"✅ Correctly handled invalid ticks: {result.error}")
 
@@ -157,7 +174,7 @@ class TestLiveV4Bitmaps:
         batcher = UniswapV4BitmapBatcher(web3_connection)
 
         # Word positions around current tick = -193099 // 10 >> 8 = -74
-        word_positions = [ -74,-75,-76 ]
+        word_positions = [-74, -75, -76]
 
         pool_words = {test_pool_id: word_positions}
 
@@ -169,15 +186,18 @@ class TestLiveV4Bitmaps:
         assert test_pool_id in result.data, f"Pool {test_pool_id} not in results"
 
         pool_bitmap_data = result.data[test_pool_id]
-        assert len(pool_bitmap_data) == len(word_positions), f"Expected {len(word_positions)} words"
-
+        assert len(pool_bitmap_data) == len(word_positions), (
+            f"Expected {len(word_positions)} words"
+        )
 
         # Verify bitmap data
         for word_pos, bitmap in pool_bitmap_data.items():
             assert isinstance(bitmap, int), f"Bitmap should be int, got {type(bitmap)}"
             print(f"✅ Word {word_pos}: {bin(bitmap)}")
 
-        logger.info(f"✅ Successfully fetched {len(pool_bitmap_data)} bitmap words for pool")
+        logger.info(
+            f"✅ Successfully fetched {len(pool_bitmap_data)} bitmap words for pool"
+        )
 
     @pytest.mark.asyncio
     async def test_empty_word_list(self, web3_connection, test_pool_id):
@@ -190,7 +210,7 @@ class TestLiveV4Bitmaps:
 
         # Should succeed with empty data
         assert result.success, "Empty word list should succeed"
-        
+
         logger.info("✅ Correctly handled empty word list")
 
 

@@ -1,40 +1,49 @@
 """Verify storage slot calculations match between RethDB and RPC"""
+
 import asyncio
 import json
+
 from eth_typing import HexStr
-from web3 import Web3
 from eth_utils import to_checksum_address
+from web3 import Web3
 
 # RPC endpoint
 RPC_URL = "http://localhost:8545"  # Adjust as needed
 w3 = Web3(Web3.HTTPProvider(RPC_URL))
 
+
 def encode_v3_tick_slot(tick: int, mapping_slot: int = 5) -> str:
     """Calculate V3 tick storage slot: keccak256(abi.encode(tick, mapping_slot))"""
     # ABI encode (int24, uint256)
-    encoded = w3.codec.encode(['int24', 'uint256'], [tick, mapping_slot])
+    encoded = w3.codec.encode(["int24", "uint256"], [tick, mapping_slot])
     slot_hash = w3.keccak(encoded)
     return slot_hash.hex()
+
 
 def encode_v3_bitmap_slot(word_pos: int, mapping_slot: int = 6) -> str:
     """Calculate V3 bitmap storage slot: keccak256(abi.encode(wordPos, mapping_slot))"""
     # ABI encode (int16, uint256)
-    encoded = w3.codec.encode(['int16', 'uint256'], [word_pos, mapping_slot])
+    encoded = w3.codec.encode(["int16", "uint256"], [word_pos, mapping_slot])
     slot_hash = w3.keccak(encoded)
     return slot_hash.hex()
+
 
 def encode_v4_pool_base_slot(pool_id: str, pools_slot: int = 6) -> str:
     """Calculate V4 pool base slot: keccak256(abi.encode(poolId, pools_slot))"""
     # ABI encode (bytes32, uint256)
-    encoded = w3.codec.encode(['bytes32', 'uint256'], [bytes.fromhex(pool_id.replace('0x', '')), pools_slot])
+    encoded = w3.codec.encode(
+        ["bytes32", "uint256"], [bytes.fromhex(pool_id.replace("0x", "")), pools_slot]
+    )
     slot_hash = w3.keccak(encoded)
     return slot_hash.hex()
+
 
 def add_offset_to_slot(slot: str, offset: int) -> str:
     """Add offset to storage slot"""
     slot_int = int(slot, 16)
     new_slot = slot_int + offset
     return f"0x{new_slot:064x}"
+
 
 def encode_v4_tick_slot(pool_id: str, tick: int) -> str:
     """Calculate V4 tick slot: nested mapping with poolId and tick"""
@@ -45,9 +54,10 @@ def encode_v4_tick_slot(pool_id: str, tick: int) -> str:
     ticks_mapping_slot = add_offset_to_slot(base_slot, 4)
 
     # Step 3: Calculate tick slot
-    encoded = w3.codec.encode(['int24', 'uint256'], [tick, int(ticks_mapping_slot, 16)])
+    encoded = w3.codec.encode(["int24", "uint256"], [tick, int(ticks_mapping_slot, 16)])
     slot_hash = w3.keccak(encoded)
     return slot_hash.hex()
+
 
 def encode_v4_bitmap_slot(pool_id: str, word_pos: int) -> str:
     """Calculate V4 bitmap slot: nested mapping with poolId and wordPos"""
@@ -58,9 +68,12 @@ def encode_v4_bitmap_slot(pool_id: str, word_pos: int) -> str:
     bitmap_mapping_slot = add_offset_to_slot(base_slot, 5)
 
     # Step 3: Calculate bitmap slot
-    encoded = w3.codec.encode(['int16', 'uint256'], [word_pos, int(bitmap_mapping_slot, 16)])
+    encoded = w3.codec.encode(
+        ["int16", "uint256"], [word_pos, int(bitmap_mapping_slot, 16)]
+    )
     slot_hash = w3.keccak(encoded)
     return slot_hash.hex()
+
 
 def encode_v4_slot0_slot(pool_id: str) -> str:
     """Calculate V4 slot0 slot"""
@@ -68,17 +81,19 @@ def encode_v4_slot0_slot(pool_id: str) -> str:
     # slot0 is at offset 0 from base
     return base_slot
 
+
 def encode_v4_liquidity_slot(pool_id: str) -> str:
     """Calculate V4 liquidity slot"""
     base_slot = encode_v4_pool_base_slot(pool_id)
     # liquidity is at offset 3 from base
     return add_offset_to_slot(base_slot, 3)
 
+
 async def test_v3_pool_slots():
     """Test V3 pool storage slot calculations"""
-    print("="*80)
+    print("=" * 80)
     print("TESTING V3 POOL STORAGE SLOTS")
-    print("="*80)
+    print("=" * 80)
 
     # Use a known V3 pool with liquidity: USDC/ETH 0.05% pool
     pool_address = "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640"
@@ -106,7 +121,7 @@ async def test_v3_pool_slots():
 
     # Parse liquidity from tick value
     # liquidityGross is lower 128 bits
-    value_int = int.from_bytes(tick_value, 'big')
+    value_int = int.from_bytes(tick_value, "big")
     liquidity_gross = value_int & ((1 << 128) - 1)
     liquidity_net_raw = value_int >> 128
 
@@ -122,24 +137,25 @@ async def test_v3_pool_slots():
     print(f"  Value: {bitmap_value.hex()}")
 
     return {
-        'protocol': 'v3',
-        'pool': pool_address,
-        'slot0_slot': '0x0000000000000000000000000000000000000000000000000000000000000000',
-        'slot0_value': slot0_value.hex(),
-        'liquidity_slot': '0x0000000000000000000000000000000000000000000000000000000000000004',
-        'liquidity_value': liquidity_value.hex(),
-        'tick_slot': tick_slot,
-        'tick_value': tick_value.hex(),
-        'tick_liquidity_gross': liquidity_gross,
-        'bitmap_slot': bitmap_slot,
-        'bitmap_value': bitmap_value.hex()
+        "protocol": "v3",
+        "pool": pool_address,
+        "slot0_slot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "slot0_value": slot0_value.hex(),
+        "liquidity_slot": "0x0000000000000000000000000000000000000000000000000000000000000004",
+        "liquidity_value": liquidity_value.hex(),
+        "tick_slot": tick_slot,
+        "tick_value": tick_value.hex(),
+        "tick_liquidity_gross": liquidity_gross,
+        "bitmap_slot": bitmap_slot,
+        "bitmap_value": bitmap_value.hex(),
     }
+
 
 async def test_v4_pool_slots():
     """Test V4 pool storage slot calculations"""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TESTING V4 POOL STORAGE SLOTS")
-    print("="*80)
+    print("=" * 80)
 
     # V4 PoolManager address
     pool_manager = "0x5302086A3a25d473aAbBd0356eFf8Dd811a4d89B"
@@ -179,19 +195,20 @@ async def test_v4_pool_slots():
     print(f"  Bitmap word 0: {bitmap_value.hex()}")
 
     return {
-        'protocol': 'v4',
-        'pool_manager': pool_manager,
-        'pool_id': pool_id,
-        'base_slot': base_slot,
-        'slot0_slot': slot0_slot,
-        'slot0_value': slot0_value.hex(),
-        'liquidity_slot': liquidity_slot,
-        'liquidity_value': liquidity_value.hex(),
-        'tick_slot': tick_slot,
-        'tick_value': tick_value.hex(),
-        'bitmap_slot': bitmap_slot,
-        'bitmap_value': bitmap_value.hex()
+        "protocol": "v4",
+        "pool_manager": pool_manager,
+        "pool_id": pool_id,
+        "base_slot": base_slot,
+        "slot0_slot": slot0_slot,
+        "slot0_value": slot0_value.hex(),
+        "liquidity_slot": liquidity_slot,
+        "liquidity_value": liquidity_value.hex(),
+        "tick_slot": tick_slot,
+        "tick_value": tick_value.hex(),
+        "bitmap_slot": bitmap_slot,
+        "bitmap_value": bitmap_value.hex(),
     }
+
 
 async def main():
     results = {}
@@ -199,27 +216,30 @@ async def main():
     # Test V3
     try:
         v3_results = await test_v3_pool_slots()
-        results['v3'] = v3_results
+        results["v3"] = v3_results
     except Exception as e:
         print(f"V3 test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     # Test V4
     try:
         v4_results = await test_v4_pool_slots()
-        results['v4'] = v4_results
+        results["v4"] = v4_results
     except Exception as e:
         print(f"V4 test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
     # Save results
-    output_file = 'data/storage_slot_verification.json'
-    with open(output_file, 'w') as f:
+    output_file = "data/storage_slot_verification.json"
+    with open(output_file, "w") as f:
         json.dump(results, f, indent=2)
 
     print(f"\n✅ Saved results to {output_file}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

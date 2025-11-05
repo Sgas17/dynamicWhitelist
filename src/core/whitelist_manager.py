@@ -71,9 +71,7 @@ class WhitelistManager:
     """
 
     def __init__(
-        self,
-        db_config: Dict[str, str],
-        nats_url: str = "nats://localhost:4222"
+        self, db_config: Dict[str, str], nats_url: str = "nats://localhost:4222"
     ):
         """
         Initialize WhitelistManager.
@@ -172,11 +170,8 @@ class WhitelistManager:
                         logger.info(f"📭 No previous whitelist found for {chain}")
                         return {}, None
 
-                    snapshot_id = rows[0]['snapshot_id']
-                    whitelist = {
-                        row['pool_address']: row['pool_data']
-                        for row in rows
-                    }
+                    snapshot_id = rows[0]["snapshot_id"]
+                    whitelist = {row["pool_address"]: row["pool_data"] for row in rows}
 
                     logger.info(
                         f"📚 Loaded {len(whitelist)} pools from snapshot {snapshot_id} "
@@ -189,9 +184,7 @@ class WhitelistManager:
             raise
 
     def calculate_diff(
-        self,
-        old_whitelist: Dict[str, Dict],
-        new_whitelist: Dict[str, Dict]
+        self, old_whitelist: Dict[str, Dict], new_whitelist: Dict[str, Dict]
     ) -> Tuple[List[Dict], List[str]]:
         """
         Calculate differential changes between whitelists.
@@ -212,10 +205,7 @@ class WhitelistManager:
         removed_addresses = old_addresses - new_addresses
 
         # Convert added addresses to full pool metadata
-        added_pools = [
-            new_whitelist[addr]
-            for addr in added_addresses
-        ]
+        added_pools = [new_whitelist[addr] for addr in added_addresses]
 
         logger.info(
             f"📊 Calculated diff: +{len(added_pools)} added, "
@@ -226,10 +216,7 @@ class WhitelistManager:
         return added_pools, list(removed_addresses)
 
     async def publish_differential_update(
-        self,
-        chain: str,
-        new_pools: List[Dict[str, Any]],
-        force_full: bool = False
+        self, chain: str, new_pools: List[Dict[str, Any]], force_full: bool = False
     ) -> Dict[str, Any]:
         """
         Publish differential whitelist update to NATS.
@@ -265,15 +252,14 @@ class WhitelistManager:
             await self.connect_nats()
 
         # Convert new_pools list to dict for comparison
-        new_whitelist = {pool['address']: pool for pool in new_pools}
+        new_whitelist = {pool["address"]: pool for pool in new_pools}
 
         # Load last published whitelist
         old_whitelist, last_snapshot_id = self.load_last_whitelist(chain)
 
         # Calculate diff
         added_pools, removed_addresses = self.calculate_diff(
-            old_whitelist,
-            new_whitelist
+            old_whitelist, new_whitelist
         )
 
         # Determine update type
@@ -291,7 +277,7 @@ class WhitelistManager:
                 await self._publish_full_update(
                     chain, new_pools, timestamp, snapshot_id
                 )
-                update_type = 'full'
+                update_type = "full"
                 logger.info(
                     f"📤 Published FULL whitelist: {len(new_pools)} pools "
                     f"(snapshot {snapshot_id})"
@@ -308,7 +294,7 @@ class WhitelistManager:
                         chain, removed_addresses, timestamp, snapshot_id
                     )
 
-                update_type = 'differential'
+                update_type = "differential"
                 logger.info(
                     f"📤 Published DIFFERENTIAL update: "
                     f"+{len(added_pools)} added, -{len(removed_addresses)} removed "
@@ -319,12 +305,12 @@ class WhitelistManager:
             self._store_snapshot(chain, new_pools, snapshot_id)
 
             return {
-                'snapshot_id': snapshot_id,
-                'total_pools': len(new_pools),
-                'added': len(added_pools),
-                'removed': len(removed_addresses),
-                'update_type': update_type,
-                'published': True
+                "snapshot_id": snapshot_id,
+                "total_pools": len(new_pools),
+                "added": len(added_pools),
+                "removed": len(removed_addresses),
+                "update_type": update_type,
+                "published": True,
             }
 
         except Exception as e:
@@ -332,18 +318,12 @@ class WhitelistManager:
             raise
 
     async def _publish_add_update(
-        self,
-        chain: str,
-        pools: List[Dict],
-        timestamp: str,
-        snapshot_id: int
+        self, chain: str, pools: List[Dict], timestamp: str, snapshot_id: int
     ):
         """Publish Add update to NATS."""
         # Minimal message (for ExEx)
         # For V4 pools, use pool_id instead of address (Pool Manager)
-        pool_identifiers = [
-            pool.get("pool_id", pool["address"]) for pool in pools
-        ]
+        pool_identifiers = [pool.get("pool_id", pool["address"]) for pool in pools]
         # Extract protocols array (1:1 correspondence with pools)
         protocols = [pool["protocol"] for pool in pools]
 
@@ -353,7 +333,7 @@ class WhitelistManager:
             "protocols": protocols,
             "chain": chain,
             "timestamp": timestamp,
-            "snapshot_id": snapshot_id
+            "snapshot_id": snapshot_id,
         }
         minimal_subject = f"whitelist.pools.{chain}.minimal"
         await self.nc.publish(minimal_subject, json.dumps(minimal_msg).encode())
@@ -364,7 +344,7 @@ class WhitelistManager:
             "pools": pools,
             "chain": chain,
             "timestamp": timestamp,
-            "snapshot_id": snapshot_id
+            "snapshot_id": snapshot_id,
         }
         full_subject = f"whitelist.pools.{chain}.full"
         await self.nc.publish(full_subject, json.dumps(full_msg).encode())
@@ -372,11 +352,7 @@ class WhitelistManager:
         logger.debug(f"  ➕ Published Add: {len(pools)} pools")
 
     async def _publish_remove_update(
-        self,
-        chain: str,
-        pool_addresses: List[str],
-        timestamp: str,
-        snapshot_id: int
+        self, chain: str, pool_addresses: List[str], timestamp: str, snapshot_id: int
     ):
         """Publish Remove update to NATS."""
         # Minimal message (for ExEx)
@@ -385,7 +361,7 @@ class WhitelistManager:
             "pools": pool_addresses,  # For remove, just addresses
             "chain": chain,
             "timestamp": timestamp,
-            "snapshot_id": snapshot_id
+            "snapshot_id": snapshot_id,
         }
         minimal_subject = f"whitelist.pools.{chain}.minimal"
         await self.nc.publish(minimal_subject, json.dumps(minimal_msg).encode())
@@ -396,7 +372,7 @@ class WhitelistManager:
             "pool_addresses": pool_addresses,
             "chain": chain,
             "timestamp": timestamp,
-            "snapshot_id": snapshot_id
+            "snapshot_id": snapshot_id,
         }
         full_subject = f"whitelist.pools.{chain}.full"
         await self.nc.publish(full_subject, json.dumps(full_msg).encode())
@@ -404,18 +380,12 @@ class WhitelistManager:
         logger.debug(f"  ➖ Published Remove: {len(pool_addresses)} pools")
 
     async def _publish_full_update(
-        self,
-        chain: str,
-        pools: List[Dict],
-        timestamp: str,
-        snapshot_id: int
+        self, chain: str, pools: List[Dict], timestamp: str, snapshot_id: int
     ):
         """Publish full replacement to NATS (backward compatible)."""
         # Minimal message (for ExEx)
         # For V4 pools, use pool_id instead of address (Pool Manager)
-        pool_identifiers = [
-            pool.get("pool_id", pool["address"]) for pool in pools
-        ]
+        pool_identifiers = [pool.get("pool_id", pool["address"]) for pool in pools]
         # Extract protocols array (1:1 correspondence with pools)
         protocols = [pool["protocol"] for pool in pools]
 
@@ -426,7 +396,7 @@ class WhitelistManager:
             "pool_count": len(pools),
             "chain": chain,
             "timestamp": timestamp,
-            "snapshot_id": snapshot_id
+            "snapshot_id": snapshot_id,
         }
         minimal_subject = f"whitelist.pools.{chain}.minimal"
         await self.nc.publish(minimal_subject, json.dumps(minimal_msg).encode())
@@ -437,19 +407,14 @@ class WhitelistManager:
             "pools": pools,
             "chain": chain,
             "timestamp": timestamp,
-            "snapshot_id": snapshot_id
+            "snapshot_id": snapshot_id,
         }
         full_subject = f"whitelist.pools.{chain}.full"
         await self.nc.publish(full_subject, json.dumps(full_msg).encode())
 
         logger.debug(f"  🔄 Published Full: {len(pools)} pools")
 
-    def _store_snapshot(
-        self,
-        chain: str,
-        pools: List[Dict],
-        snapshot_id: int
-    ):
+    def _store_snapshot(self, chain: str, pools: List[Dict], snapshot_id: int):
         """Store whitelist snapshot to database."""
         insert_sql = """
         INSERT INTO whitelist_snapshots
@@ -460,7 +425,13 @@ class WhitelistManager:
 
         # Prepare values for bulk insert
         values = [
-            (chain, pool['address'], json.dumps(pool), snapshot_id, datetime.now(timezone.utc))
+            (
+                chain,
+                pool["address"],
+                json.dumps(pool),
+                snapshot_id,
+                datetime.now(timezone.utc),
+            )
             for pool in pools
         ]
 
@@ -492,11 +463,11 @@ async def example_usage():
 
     # Database configuration
     db_config = {
-        'host': 'localhost',
-        'port': 5432,
-        'database': 'defi_platform',
-        'user': 'postgres',
-        'password': 'your_password'
+        "host": "localhost",
+        "port": 5432,
+        "database": "defi_platform",
+        "user": "postgres",
+        "password": "your_password",
     }
 
     # Sample pools from dynamicWhitelist filtering
@@ -507,36 +478,36 @@ async def example_usage():
                 "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "decimals": 6,
                 "symbol": "USDC",
-                "name": "USD Coin"
+                "name": "USD Coin",
             },
             "token1": {
                 "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
                 "decimals": 18,
                 "symbol": "WETH",
-                "name": "Wrapped Ether"
+                "name": "Wrapped Ether",
             },
             "protocol": "UniswapV3",
             "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
             "fee": 500,
-            "tick_spacing": 10
+            "tick_spacing": 10,
         },
         {
             "address": "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8",
             "token0": {
                 "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "decimals": 6,
-                "symbol": "USDC"
+                "symbol": "USDC",
             },
             "token1": {
                 "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
                 "decimals": 18,
-                "symbol": "WETH"
+                "symbol": "WETH",
             },
             "protocol": "UniswapV3",
             "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
             "fee": 3000,
-            "tick_spacing": 60
-        }
+            "tick_spacing": 60,
+        },
     ]
 
     print("\n🚀 WhitelistManager Differential Update Example")

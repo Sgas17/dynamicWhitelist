@@ -8,12 +8,12 @@ This module maintains a blacklist of malicious tokens by combining:
 
 import json
 import logging
-from pathlib import Path
-from typing import Set, Dict, Optional, List
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Dict, List, Optional, Set
 
-from src.utils.etherscan_label_scraper import EtherscanLabelScraper, EtherscanLabel
+from src.utils.etherscan_label_scraper import EtherscanLabel, EtherscanLabelScraper
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +65,13 @@ class TokenBlacklistManager:
         self.blacklist: Dict[str, BlacklistEntry] = self._load_blacklist()
 
         # Initialize Etherscan scraper
-        self.scraper = EtherscanLabelScraper(
-            cache_dir=str(self.cache_file.parent)
-        )
+        self.scraper = EtherscanLabelScraper(cache_dir=str(self.cache_file.parent))
 
         # Auto-update if needed
         if auto_update and self._should_update():
-            logger.info("Auto-update is enabled but requires manual check_and_add_from_etherscan call")
+            logger.info(
+                "Auto-update is enabled but requires manual check_and_add_from_etherscan call"
+            )
 
     def _load_blacklist(self) -> Dict[str, BlacklistEntry]:
         """Load blacklist from disk."""
@@ -168,18 +168,14 @@ class TokenBlacklistManager:
                 )
                 added_count += 1
 
-                logger.warning(
-                    f"Blacklisted {address}: {label.nametag} ({reason})"
-                )
+                logger.warning(f"Blacklisted {address}: {label.nametag} ({reason})")
 
         if added_count > 0:
             self._save_blacklist()
 
         return added_count
 
-    def add_manual_entry(
-        self, address: str, reason: str, notes: Optional[str] = None
-    ):
+    def add_manual_entry(self, address: str, reason: str, notes: Optional[str] = None):
         """
         Manually add token to blacklist.
 
@@ -243,9 +239,7 @@ class TokenBlacklistManager:
                 clean.append(address)
 
         if filtered:
-            logger.info(
-                f"Filtered {len(filtered)}/{len(addresses)} blacklisted tokens"
-            )
+            logger.info(f"Filtered {len(filtered)}/{len(addresses)} blacklisted tokens")
 
         return clean
 
@@ -333,7 +327,7 @@ if __name__ == "__main__":
     print("\nSample Blacklisted Tokens:")
     print("=" * 50)
     for i, (addr, entry) in enumerate(list(manager.blacklist.items())[:5]):
-        print(f"\n{i+1}. {addr}")
+        print(f"\n{i + 1}. {addr}")
         print(f"   Nametag: {entry.nametag}")
         print(f"   Reason: {entry.reason}")
         print(f"   Source: {entry.source}")

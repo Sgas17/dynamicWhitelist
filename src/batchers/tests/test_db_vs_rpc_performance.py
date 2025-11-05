@@ -24,26 +24,28 @@ Examples:
     python test_db_vs_rpc_performance.py --pool 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640 --discover-ticks
 """
 
+import argparse
 import asyncio
-import time
 import os
 import sys
-from typing import List, Dict, Optional
+import time
 from dataclasses import dataclass
-import argparse
+from typing import Dict, List, Optional
 
-from web3 import Web3
 from eth_typing import ChecksumAddress
+from web3 import Web3
+
+from src.batchers.base import BatchConfig
 
 # Import existing batchers
-from src.batchers.uniswap_v3_ticks import UniswapV3TickBatcher, UniswapV3BitmapBatcher
-from src.batchers.base import BatchConfig
+from src.batchers.uniswap_v3_ticks import UniswapV3BitmapBatcher, UniswapV3TickBatcher
 from src.config import ConfigManager
 
 
 @dataclass
 class PerformanceMetrics:
     """Performance metrics for a single run."""
+
     method: str
     duration_seconds: float
     tick_count: int
@@ -56,6 +58,7 @@ def get_process_memory_mb() -> float:
     """Get current process memory usage in MB."""
     try:
         import psutil
+
         process = psutil.Process(os.getpid())
         return process.memory_info().rss / 1024 / 1024
     except ImportError:
@@ -63,9 +66,7 @@ def get_process_memory_mb() -> float:
 
 
 async def fetch_ticks_via_rpc(
-    web3: Web3,
-    pool_address: ChecksumAddress,
-    ticks: List[int]
+    web3: Web3, pool_address: ChecksumAddress, ticks: List[int]
 ) -> PerformanceMetrics:
     """
     Fetch tick data using RPC batch calls via UniswapV3TickBatcher.
@@ -73,9 +74,9 @@ async def fetch_ticks_via_rpc(
     This uses the existing production batcher that deploys a Solidity contract
     and calls it via eth.call() to batch fetch tick data.
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"RPC BATCH METHOD: Fetching {len(ticks)} ticks")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     start_memory = get_process_memory_mb()
     start_time = time.perf_counter()
@@ -85,7 +86,7 @@ async def fetch_ticks_via_rpc(
         config = BatchConfig(
             batch_size=100,  # Batch up to 100 ticks per call
             max_retries=3,
-            timeout=30.0
+            timeout=30.0,
         )
         batcher = UniswapV3TickBatcher(web3, config=config)
 
@@ -108,7 +109,7 @@ async def fetch_ticks_via_rpc(
                 tick_count=len(ticks),
                 ticks_per_second=0,
                 memory_usage_mb=memory_delta,
-                error=result.error
+                error=result.error,
             )
 
         # Verify we got all ticks
@@ -118,7 +119,7 @@ async def fetch_ticks_via_rpc(
         print(f"\n✓ Successfully fetched {successful_ticks}/{len(ticks)} ticks")
         print(f"  Block number: {result.block_number}")
         print(f"  Duration: {duration:.3f}s")
-        print(f"  Rate: {successful_ticks/duration:.1f} ticks/sec")
+        print(f"  Rate: {successful_ticks / duration:.1f} ticks/sec")
         print(f"  Memory delta: {memory_delta:.2f} MB")
 
         # Show sample of data
@@ -135,7 +136,7 @@ async def fetch_ticks_via_rpc(
             duration_seconds=duration,
             tick_count=successful_ticks,
             ticks_per_second=successful_ticks / duration,
-            memory_usage_mb=memory_delta
+            memory_usage_mb=memory_delta,
         )
 
     except Exception as e:
@@ -149,23 +150,21 @@ async def fetch_ticks_via_rpc(
             duration_seconds=duration,
             tick_count=0,
             ticks_per_second=0,
-            error=str(e)
+            error=str(e),
         )
 
 
 def fetch_ticks_via_db(
-    db_path: str,
-    pool_address: str,
-    ticks: List[int]
+    db_path: str, pool_address: str, ticks: List[int]
 ) -> PerformanceMetrics:
     """
     Fetch tick data using direct database access via scrape_rethdb_data.
 
     This uses the Rust library with PyO3 bindings to directly query the MDBX database.
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"DIRECT DB METHOD: Fetching {len(ticks)} ticks")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     start_memory = get_process_memory_mb()
     start_time = time.perf_counter()
@@ -178,17 +177,14 @@ def fetch_ticks_via_db(
         # Note: The library expects a list of PoolInput objects
         pool_inputs = []
         for tick in ticks:
-            pool_input = scrape_rethdb_data.PoolInput.new_v3_tick(
-                pool_address,
-                tick
-            )
+            pool_input = scrape_rethdb_data.PoolInput.new_v3_tick(pool_address, tick)
             pool_inputs.append(pool_input)
 
         # Collect data from DB
         results = scrape_rethdb_data.collect_pool_data(
             db_path,
             pool_inputs,
-            None  # block_number (None = latest)
+            None,  # block_number (None = latest)
         )
 
         end_time = time.perf_counter()
@@ -198,16 +194,16 @@ def fetch_ticks_via_db(
         memory_delta = end_memory - start_memory
 
         # Count successful ticks (non-zero data)
-        successful_ticks = len([r for r in results if r.get('tick_data') is not None])
+        successful_ticks = len([r for r in results if r.get("tick_data") is not None])
 
         print(f"\n✓ Successfully fetched {successful_ticks}/{len(ticks)} ticks")
         print(f"  Duration: {duration:.3f}s")
-        print(f"  Rate: {successful_ticks/duration:.1f} ticks/sec")
+        print(f"  Rate: {successful_ticks / duration:.1f} ticks/sec")
         print(f"  Memory delta: {memory_delta:.2f} MB")
 
         # Show sample of data
-        if results and results[0].get('tick_data'):
-            sample = results[0]['tick_data']
+        if results and results[0].get("tick_data"):
+            sample = results[0]["tick_data"]
             print(f"\n  Sample tick {ticks[0]}:")
             print(f"    liquidityGross: {sample.get('liquidity_gross')}")
             print(f"    liquidityNet: {sample.get('liquidity_net')}")
@@ -218,7 +214,7 @@ def fetch_ticks_via_db(
             duration_seconds=duration,
             tick_count=successful_ticks,
             ticks_per_second=successful_ticks / duration,
-            memory_usage_mb=memory_delta
+            memory_usage_mb=memory_delta,
         )
 
     except ImportError as e:
@@ -227,14 +223,16 @@ def fetch_ticks_via_db(
 
         print(f"\n✗ Failed to import scrape_rethdb_data: {e}")
         print("   Make sure to install it first:")
-        print("   cd ~/scrape_rethdb_data && maturin develop --release --features=python")
+        print(
+            "   cd ~/scrape_rethdb_data && maturin develop --release --features=python"
+        )
 
         return PerformanceMetrics(
             method="Direct DB",
             duration_seconds=duration,
             tick_count=0,
             ticks_per_second=0,
-            error=f"Import error: {e}"
+            error=f"Import error: {e}",
         )
 
     except Exception as e:
@@ -248,14 +246,12 @@ def fetch_ticks_via_db(
             duration_seconds=duration,
             tick_count=0,
             ticks_per_second=0,
-            error=str(e)
+            error=str(e),
         )
 
 
 async def discover_initialized_ticks(
-    web3: Web3,
-    pool_address: ChecksumAddress,
-    tick_spacing: int = 60
+    web3: Web3, pool_address: ChecksumAddress, tick_spacing: int = 60
 ) -> List[int]:
     """
     Discover all initialized ticks for a pool using bitmap data.
@@ -263,12 +259,13 @@ async def discover_initialized_ticks(
     This fetches the tick bitmaps and finds all initialized ticks,
     which gives us a realistic workload to test performance.
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"DISCOVERING INITIALIZED TICKS")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Get pool's current tick to estimate range
     from web3 import Web3
+
     slot0_abi = [
         {
             "inputs": [],
@@ -276,14 +273,26 @@ async def discover_initialized_ticks(
             "outputs": [
                 {"internalType": "uint160", "name": "sqrtPriceX96", "type": "uint160"},
                 {"internalType": "int24", "name": "tick", "type": "int24"},
-                {"internalType": "uint16", "name": "observationIndex", "type": "uint16"},
-                {"internalType": "uint16", "name": "observationCardinality", "type": "uint16"},
-                {"internalType": "uint16", "name": "observationCardinalityNext", "type": "uint16"},
+                {
+                    "internalType": "uint16",
+                    "name": "observationIndex",
+                    "type": "uint16",
+                },
+                {
+                    "internalType": "uint16",
+                    "name": "observationCardinality",
+                    "type": "uint16",
+                },
+                {
+                    "internalType": "uint16",
+                    "name": "observationCardinalityNext",
+                    "type": "uint16",
+                },
                 {"internalType": "uint8", "name": "feeProtocol", "type": "uint8"},
-                {"internalType": "bool", "name": "unlocked", "type": "bool"}
+                {"internalType": "bool", "name": "unlocked", "type": "bool"},
             ],
             "stateMutability": "view",
-            "type": "function"
+            "type": "function",
         }
     ]
 
@@ -322,7 +331,9 @@ async def discover_initialized_ticks(
     print(f"  Got {len(pool_bitmaps)} bitmap words")
 
     # Find initialized ticks
-    initialized_ticks = bitmap_batcher.find_initialized_ticks(pool_bitmaps, tick_spacing)
+    initialized_ticks = bitmap_batcher.find_initialized_ticks(
+        pool_bitmaps, tick_spacing
+    )
 
     print(f"  Found {len(initialized_ticks)} initialized ticks")
 
@@ -335,12 +346,14 @@ async def discover_initialized_ticks(
 
 def print_comparison(metrics_list: List[PerformanceMetrics]):
     """Print a detailed comparison of performance metrics."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("PERFORMANCE COMPARISON SUMMARY")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Table header
-    print(f"{'Method':<15} {'Duration':<12} {'Ticks':<10} {'Rate (t/s)':<12} {'Memory (MB)':<12} {'Status':<10}")
+    print(
+        f"{'Method':<15} {'Duration':<12} {'Ticks':<10} {'Rate (t/s)':<12} {'Memory (MB)':<12} {'Status':<10}"
+    )
     print("-" * 80)
 
     # Print each result
@@ -348,59 +361,67 @@ def print_comparison(metrics_list: List[PerformanceMetrics]):
         status = "ERROR" if metrics.error else "SUCCESS"
         memory = f"{metrics.memory_usage_mb:.2f}" if metrics.memory_usage_mb else "N/A"
 
-        print(f"{metrics.method:<15} {metrics.duration_seconds:<12.3f} {metrics.tick_count:<10} "
-              f"{metrics.ticks_per_second:<12.1f} {memory:<12} {status:<10}")
+        print(
+            f"{metrics.method:<15} {metrics.duration_seconds:<12.3f} {metrics.tick_count:<10} "
+            f"{metrics.ticks_per_second:<12.1f} {memory:<12} {status:<10}"
+        )
 
         if metrics.error:
             print(f"  Error: {metrics.error}")
 
     # Calculate speedup if both methods succeeded
-    db_metrics = next((m for m in metrics_list if m.method == "Direct DB" and not m.error), None)
-    rpc_metrics = next((m for m in metrics_list if m.method == "RPC Batch" and not m.error), None)
+    db_metrics = next(
+        (m for m in metrics_list if m.method == "Direct DB" and not m.error), None
+    )
+    rpc_metrics = next(
+        (m for m in metrics_list if m.method == "RPC Batch" and not m.error), None
+    )
 
     if db_metrics and rpc_metrics:
         speedup = rpc_metrics.duration_seconds / db_metrics.duration_seconds
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Direct DB is {speedup:.2f}x faster than RPC Batch")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
     print()
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Compare DB vs RPC performance for Uniswap V3 tick data")
+    parser = argparse.ArgumentParser(
+        description="Compare DB vs RPC performance for Uniswap V3 tick data"
+    )
     parser.add_argument(
         "--pool",
         default="0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",  # USDC/WETH 0.05%
-        help="Pool address (default: USDC/WETH 0.05%)"
+        help="Pool address (default: USDC/WETH 0.05%)",
     )
     parser.add_argument(
         "--ticks",
-        help="Comma-separated list of tick values (e.g., -887220,-887160,887220)"
+        help="Comma-separated list of tick values (e.g., -887220,-887160,887220)",
     )
     parser.add_argument(
         "--discover-ticks",
         action="store_true",
-        help="Discover and test all initialized ticks (realistic workload)"
+        help="Discover and test all initialized ticks (realistic workload)",
     )
     parser.add_argument(
         "--tick-spacing",
         type=int,
         default=10,
-        help="Tick spacing for the pool (default: 10 for 0.05%% fee tier)"
+        help="Tick spacing for the pool (default: 10 for 0.05%% fee tier)",
     )
     parser.add_argument(
         "--db-path",
         default=os.getenv("RETH_DB_PATH", "/mnt/data/reth/mainnet/db"),
-        help="Path to Reth database"
+        help="Path to Reth database",
     )
 
     args = parser.parse_args()
 
     # Setup Web3 connection
     config_manager = ConfigManager()
-    chain_config = config_manager.chains.get_chain_config('ethereum')
-    rpc_url = chain_config['rpc_url']
+    chain_config = config_manager.chains.get_chain_config("ethereum")
+    rpc_url = chain_config["rpc_url"]
 
     print(f"Connecting to RPC: {rpc_url}")
     web3 = Web3(Web3.HTTPProvider(rpc_url))

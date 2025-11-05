@@ -20,8 +20,7 @@ from datetime import datetime
 from src.processors.pools.unified_liquidity_processor import UnifiedLiquidityProcessor
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -37,9 +36,7 @@ async def main():
     try:
         # Initialize processor
         processor = UnifiedLiquidityProcessor(
-            chain="ethereum",
-            block_chunk_size=100000,
-            enable_blacklist=True
+            chain="ethereum", block_chunk_size=100000, enable_blacklist=True
         )
 
         # Validate configuration
@@ -61,9 +58,9 @@ async def main():
         result_v3 = await processor.process_liquidity_snapshots(
             protocol="uniswap_v3",
             start_block=None,  # Auto-detect from last snapshot
-            end_block=None,    # Process all available
+            end_block=None,  # Process all available
             force_rebuild=False,
-            cleanup_parquet=True
+            cleanup_parquet=True,
         )
 
         if "error" in result_v3:
@@ -86,7 +83,7 @@ async def main():
                 start_block=None,
                 end_block=None,
                 force_rebuild=False,
-                cleanup_parquet=True
+                cleanup_parquet=True,
             )
 
             if "error" in result_v4:
@@ -95,7 +92,9 @@ async def main():
                 logger.info("✓ Uniswap V4 processing complete:")
                 logger.info(f"  Start block: {result_v4['start_block']}")
                 logger.info(f"  End block: {result_v4['end_block']}")
-                logger.info(f"  Events processed: {result_v4['total_events_processed']}")
+                logger.info(
+                    f"  Events processed: {result_v4['total_events_processed']}"
+                )
                 logger.info(f"  Pools updated: {result_v4['pools_updated']}")
                 logger.info(f"  Snapshots stored: {result_v4['snapshots_stored']}")
                 logger.info(f"  Events stored: {result_v4['events_stored']}")
@@ -109,8 +108,12 @@ async def main():
         snapshot_stats = stats["snapshots"]
         logger.info(f"  Total snapshots: {snapshot_stats.get('total_snapshots', 0)}")
         logger.info(f"  Latest block: {snapshot_stats.get('latest_snapshot_block', 0)}")
-        logger.info(f"  Avg ticks per pool: {snapshot_stats.get('avg_ticks_per_pool', 0):.2f}")
-        logger.info(f"  Hours since last update: {snapshot_stats.get('hours_since_last_update', 0):.2f}")
+        logger.info(
+            f"  Avg ticks per pool: {snapshot_stats.get('avg_ticks_per_pool', 0):.2f}"
+        )
+        logger.info(
+            f"  Hours since last update: {snapshot_stats.get('hours_since_last_update', 0):.2f}"
+        )
         logger.info("")
 
         logger.info("=" * 80)

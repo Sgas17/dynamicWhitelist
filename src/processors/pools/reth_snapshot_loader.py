@@ -9,8 +9,8 @@ This provides a MUCH faster way to create initial snapshots.
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ class RethSnapshotLoader:
         # Try to import the Rust library
         try:
             import scrape_rethdb_data
+
             self.rust_lib = scrape_rethdb_data
             logger.info(f"Successfully loaded scrape_rethdb_data Rust library")
         except ImportError as e:
@@ -67,17 +68,19 @@ class RethSnapshotLoader:
         logger.info(f"Loading V3 pool snapshot from reth DB: {pool_address}")
 
         # Prepare pool input for Rust
-        pools = [{
-            "address": pool_address,
-            "protocol": "v3",
-            "tick_spacing": tick_spacing,
-        }]
+        pools = [
+            {
+                "address": pool_address,
+                "protocol": "v3",
+                "tick_spacing": tick_spacing,
+            }
+        ]
 
         # Call Rust function to collect data
         result_json = self.rust_lib.collect_pools(
             str(self.reth_db_path),
             pools,
-            None  # No V4 pool IDs needed for V3
+            None,  # No V4 pool IDs needed for V3
         )
 
         # Parse JSON result
@@ -102,8 +105,7 @@ class RethSnapshotLoader:
         block_number = pool_data.get("block_number", 0)
 
         logger.info(
-            f"✓ Loaded {len(tick_data)} ticks from reth DB "
-            f"at block {block_number}"
+            f"✓ Loaded {len(tick_data)} ticks from reth DB at block {block_number}"
         )
 
         return tick_data, block_number
@@ -131,17 +133,19 @@ class RethSnapshotLoader:
         logger.info(f"Loading V4 pool snapshot from reth DB: {pool_id}")
 
         # Prepare pool input for Rust
-        pools = [{
-            "address": pool_address,
-            "protocol": "v4",
-            "tick_spacing": tick_spacing,
-        }]
+        pools = [
+            {
+                "address": pool_address,
+                "protocol": "v4",
+                "tick_spacing": tick_spacing,
+            }
+        ]
 
         # Call Rust function with V4 pool ID
         result_json = self.rust_lib.collect_pools(
             str(self.reth_db_path),
             pools,
-            [pool_id]  # V4 requires pool ID
+            [pool_id],  # V4 requires pool ID
         )
 
         # Parse JSON result
@@ -174,8 +178,7 @@ class RethSnapshotLoader:
         block_number = pool_data.get("block_number", 0)
 
         logger.info(
-            f"✓ Loaded {len(tick_data)} ticks from reth DB "
-            f"at block {block_number}"
+            f"✓ Loaded {len(tick_data)} ticks from reth DB at block {block_number}"
         )
 
         return tick_data, bitmap_data, block_number
@@ -198,18 +201,16 @@ class RethSnapshotLoader:
         logger.info(f"Loading V2 pool reserves from reth DB: {pool_address}")
 
         # Prepare pool input for Rust
-        pools = [{
-            "address": pool_address,
-            "protocol": "v2",
-            "tick_spacing": None,
-        }]
+        pools = [
+            {
+                "address": pool_address,
+                "protocol": "v2",
+                "tick_spacing": None,
+            }
+        ]
 
         # Call Rust function
-        result_json = self.rust_lib.collect_pools(
-            str(self.reth_db_path),
-            pools,
-            None
-        )
+        result_json = self.rust_lib.collect_pools(str(self.reth_db_path), pools, None)
 
         # Parse JSON result
         results = json.loads(result_json)
@@ -259,11 +260,7 @@ class RethSnapshotLoader:
         ]
 
         # Call Rust function once for all pools
-        result_json = self.rust_lib.collect_pools(
-            str(self.reth_db_path),
-            pools,
-            None
-        )
+        result_json = self.rust_lib.collect_pools(str(self.reth_db_path), pools, None)
 
         # Parse results
         results = json.loads(result_json)
@@ -275,7 +272,9 @@ class RethSnapshotLoader:
             tick_data = {}
             if "ticks" in pool_data and pool_data["ticks"]:
                 for tick in pool_data["ticks"]:
-                    tick_index = tick["tick"]  # Rust library uses "tick" not "tick_index"
+                    tick_index = tick[
+                        "tick"
+                    ]  # Rust library uses "tick" not "tick_index"
                     tick_data[tick_index] = {
                         "liquidity_gross": tick["liquidity_gross"],
                         "liquidity_net": tick["liquidity_net"],
@@ -296,7 +295,6 @@ class RethSnapshotLoader:
 
         return output
 
-
     def batch_load_v3_states(
         self,
         pool_configs: List[Dict],
@@ -311,7 +309,9 @@ class RethSnapshotLoader:
         Returns:
             List of dicts with keys: address, slot0, liquidity, tick, sqrtPriceX96
         """
-        logger.info(f"Batch loading {len(pool_configs)} V3 pool states from reth DB (slot0_only)")
+        logger.info(
+            f"Batch loading {len(pool_configs)} V3 pool states from reth DB (slot0_only)"
+        )
 
         # Prepare pools input with slot0_only flag
         pools = [
@@ -325,11 +325,7 @@ class RethSnapshotLoader:
         ]
 
         # Call Rust function
-        result_json = self.rust_lib.collect_pools(
-            str(self.reth_db_path),
-            pools,
-            None
-        )
+        result_json = self.rust_lib.collect_pools(str(self.reth_db_path), pools, None)
 
         # Parse results
         results = json.loads(result_json)
@@ -347,13 +343,15 @@ class RethSnapshotLoader:
             else:
                 sqrt_price = int(sqrt_price_hex)
 
-            output.append({
-                "address": pool_data["address"],
-                "slot0": slot0,
-                "liquidity": str(liquidity) if liquidity is not None else "0",
-                "tick": slot0.get("tick", 0),
-                "sqrtPriceX96": str(sqrt_price),
-            })
+            output.append(
+                {
+                    "address": pool_data["address"],
+                    "slot0": slot0,
+                    "liquidity": str(liquidity) if liquidity is not None else "0",
+                    "tick": slot0.get("tick", 0),
+                    "sqrtPriceX96": str(sqrt_price),
+                }
+            )
 
         logger.info(f"✓ Batch loaded {len(output)} V3 pool states from reth DB")
 
@@ -373,7 +371,9 @@ class RethSnapshotLoader:
         Returns:
             List of dicts with keys: pool_id, slot0, liquidity, tick, sqrtPriceX96
         """
-        logger.info(f"Batch loading {len(pool_configs)} V4 pool states from reth DB (slot0_only)")
+        logger.info(
+            f"Batch loading {len(pool_configs)} V4 pool states from reth DB (slot0_only)"
+        )
 
         # Prepare pools input with slot0_only flag
         pools = []
@@ -387,19 +387,21 @@ class RethSnapshotLoader:
             if i < 3:
                 logger.info(f"   Pool {i}: manager={pool_manager}, id={pool_id}")
 
-            pools.append({
-                "address": pool_manager,
-                "protocol": "v4",
-                "tick_spacing": config["tick_spacing"],
-                "slot0_only": True,  # Only fetch slot0 + liquidity
-            })
+            pools.append(
+                {
+                    "address": pool_manager,
+                    "protocol": "v4",
+                    "tick_spacing": config["tick_spacing"],
+                    "slot0_only": True,  # Only fetch slot0 + liquidity
+                }
+            )
             pool_ids.append(pool_id)
 
         # Call Rust function
         result_json = self.rust_lib.collect_pools(
             str(self.reth_db_path),
             pools,
-            pool_ids  # V4 requires pool IDs
+            pool_ids,  # V4 requires pool IDs
         )
 
         # Parse results
@@ -419,17 +421,20 @@ class RethSnapshotLoader:
             else:
                 sqrt_price = int(sqrt_price_hex)
 
-            output.append({
-                "pool_id": pool_id,
-                "slot0": slot0,
-                "liquidity": str(liquidity) if liquidity is not None else "0",
-                "tick": slot0.get("tick", 0),
-                "sqrtPriceX96": str(sqrt_price),
-            })
+            output.append(
+                {
+                    "pool_id": pool_id,
+                    "slot0": slot0,
+                    "liquidity": str(liquidity) if liquidity is not None else "0",
+                    "tick": slot0.get("tick", 0),
+                    "sqrtPriceX96": str(sqrt_price),
+                }
+            )
 
         logger.info(f"✓ Batch loaded {len(output)} V4 pool states from reth DB")
 
         return output
+
 
 # Example usage
 if __name__ == "__main__":
@@ -451,4 +456,6 @@ if __name__ == "__main__":
     # Show first few ticks
     for tick_index in sorted(tick_data.keys())[:5]:
         data = tick_data[tick_index]
-        print(f"  Tick {tick_index}: gross={data['liquidity_gross']}, net={data['liquidity_net']}")
+        print(
+            f"  Tick {tick_index}: gross={data['liquidity_gross']}, net={data['liquidity_net']}"
+        )

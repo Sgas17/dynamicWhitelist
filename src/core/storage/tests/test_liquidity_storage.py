@@ -4,32 +4,31 @@ Test script for liquidity storage layers.
 This script tests both PostgreSQL (snapshots) and TimescaleDB (updates) storage.
 """
 
-import sys
-import os
 import logging
-from datetime import datetime, UTC
+import os
+import sys
+from datetime import UTC, datetime
 
 # Add project root to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 
-from src.core.storage.timescaledb import get_timescale_engine
 from src.core.storage.postgres_liquidity import (
+    get_snapshot_statistics,
+    load_liquidity_snapshot,
     setup_liquidity_snapshots_table,
     store_liquidity_snapshot,
-    load_liquidity_snapshot,
-    get_snapshot_statistics,
 )
+from src.core.storage.timescaledb import get_timescale_engine
 from src.core.storage.timescaledb_liquidity import (
+    get_update_statistics,
+    get_updates_since_block,
     setup_liquidity_updates_table,
     store_liquidity_update,
     store_liquidity_updates_batch,
-    get_updates_since_block,
-    get_update_statistics,
 )
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -62,12 +61,12 @@ def test_snapshot_storage():
             -887220: {
                 "liquidityNet": 1234567890,
                 "liquidityGross": 1234567890,
-                "block_number": 12369621
+                "block_number": 12369621,
             },
             -887210: {
                 "liquidityNet": -9876543210,
                 "liquidityGross": 9876543210,
-                "block_number": 12369625
+                "block_number": 12369625,
             },
         },
         "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
@@ -98,8 +97,9 @@ def test_snapshot_storage():
     # Verify tick_data structure
     logger.info("4. Verifying tick_data structure...")
     for tick, data in loaded_snapshot["tick_data"].items():
-        assert set(data.keys()) == {"liquidityNet", "liquidityGross", "block_number"}, \
+        assert set(data.keys()) == {"liquidityNet", "liquidityGross", "block_number"}, (
             f"Invalid tick_data structure for tick {tick}"
+        )
     logger.info("✓ Tick_data structure validated (3 fields only)")
 
     # Get statistics
@@ -174,17 +174,24 @@ def test_update_storage():
         batch_updates.append(update)
 
     stored_count = store_liquidity_updates_batch(batch_updates, chain_id)
-    assert stored_count == len(batch_updates), \
+    assert stored_count == len(batch_updates), (
         f"Batch storage incomplete ({stored_count}/{len(batch_updates)})"
+    )
     logger.info(f"✓ Batch stored successfully ({stored_count} updates)")
 
     # Query updates
     logger.info("4. Querying updates since block...")
-    updates = get_updates_since_block(test_pool_address, after_block=12369621, chain_id=chain_id)
+    updates = get_updates_since_block(
+        test_pool_address, after_block=12369621, chain_id=chain_id
+    )
     assert updates, "No updates retrieved"
     logger.info(f"✓ Retrieved {len(updates)} updates")
-    logger.info(f"  First update: Block {updates[0]['block_number']}, Type: {updates[0]['event_type']}")
-    logger.info(f"  Last update: Block {updates[-1]['block_number']}, Type: {updates[-1]['event_type']}")
+    logger.info(
+        f"  First update: Block {updates[0]['block_number']}, Type: {updates[0]['event_type']}"
+    )
+    logger.info(
+        f"  Last update: Block {updates[-1]['block_number']}, Type: {updates[-1]['event_type']}"
+    )
 
     # Get statistics
     logger.info("5. Getting update statistics...")
@@ -216,7 +223,9 @@ def main():
         logger.info("=" * 60)
         logger.info("TEST SUMMARY")
         logger.info("=" * 60)
-        logger.info(f"PostgreSQL Snapshots: {'✓ PASS' if snapshot_success else '✗ FAIL'}")
+        logger.info(
+            f"PostgreSQL Snapshots: {'✓ PASS' if snapshot_success else '✗ FAIL'}"
+        )
         logger.info(f"TimescaleDB Updates: {'✓ PASS' if update_success else '✗ FAIL'}")
 
         if snapshot_success and update_success:

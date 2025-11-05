@@ -1,7 +1,7 @@
-import pathlib
-from threading import Lock
 import itertools
 import os
+import pathlib
+from threading import Lock
 from weakref import WeakSet
 
 import eth_abi.abi as eth_abi
@@ -12,11 +12,10 @@ from degenbot.types import BoundedCache
 from degenbot.uniswap.types import (
     UniswapV3BitmapAtWord,
     UniswapV3LiquidityAtTick,
-    UniswapV3PoolState,
     UniswapV3PoolLiquidityMappingUpdate,
+    UniswapV3PoolState,
 )
 from degenbot.uniswap.v3_liquidity_pool import UniswapV3Pool
-
 from eth_utils.address import to_checksum_address
 from hexbytes import HexBytes
 
@@ -24,11 +23,11 @@ from hexbytes import HexBytes
 # Note: Liquidity snapshot functions will be moved to postgres_liquidity.py
 # For now, keep these imports but they will be migrated
 from utils.database_helper import (
-    store_liquidity_snapshot_to_database,
-    load_liquidity_snapshot_from_database,
+    get_database_engine,
     get_snapshot_metadata,
+    load_liquidity_snapshot_from_database,
     setup_liquidity_snapshot_tables,
-    get_database_engine
+    store_liquidity_snapshot_to_database,
 )
 
 # Import config system
@@ -45,7 +44,9 @@ EVENTS_PATH = CHAIN_PATH / f"{EXCHANGE_NAME}_modifyliquidity_events/"
 POOL_FILE = DATA_DIR / f"{CHAIN_NAME}_lps_{EXCHANGE_NAME}.json"
 
 # Use centralized protocol config for pool manager address
-POOL_MANAGER_ADDRESS = config.protocol.get_factory_addresses("uniswap_v3", CHAIN_NAME)[0]
+POOL_MANAGER_ADDRESS = config.protocol.get_factory_addresses("uniswap_v3", CHAIN_NAME)[
+    0
+]
 LP_TYPE = "UniswapV3"
 POOL_FILES = [
     os.path.join(DATA_DIR, f"{CHAIN_NAME}_lps_{EXCHANGE_NAME}.json"),
@@ -66,7 +67,7 @@ class MockV3LiquidityPool(UniswapV3Pool):
     def __init__(self):
         self._initial_state_block = 0
         self._state_cache = BoundedCache(max_items=8)
-        self._subscribers = set() #type: ignore
+        self._subscribers = set()  # type: ignore
         self._state_lock = Lock()
         self.sparse_liquidity_map = False
         self.name = "V3 POOL"
@@ -82,20 +83,26 @@ for path in POOL_FILES:
         for i, lp in enumerate(lps):
             try:
                 # Skip metadata entries that don't have 'address' field
-                if isinstance(lp, dict) and 'address' in lp:
+                if isinstance(lp, dict) and "address" in lp:
                     # Ensure numeric fields are properly typed (JSON converts them to strings)
                     pool_data = {
                         "address": lp["address"],
                         "fee": int(lp["fee"]) if lp.get("fee") is not None else None,
-                        "tick_spacing": int(lp["tick_spacing"]) if lp.get("tick_spacing") is not None else None,
+                        "tick_spacing": int(lp["tick_spacing"])
+                        if lp.get("tick_spacing") is not None
+                        else None,
                         "asset0": lp["asset0"],
                         "asset1": lp["asset1"],
                         "type": lp["type"],
-                        "creation_block": int(lp["creation_block"]) if lp.get("creation_block") is not None else None,
+                        "creation_block": int(lp["creation_block"])
+                        if lp.get("creation_block") is not None
+                        else None,
                         "factory": lp["factory"],
                     }
                     lp_data[lp["address"]] = pool_data
-                elif isinstance(lp, dict) and ('block_number' in lp or 'number_of_pools' in lp):
+                elif isinstance(lp, dict) and (
+                    "block_number" in lp or "number_of_pools" in lp
+                ):
                     # This is metadata, skip silently
                     continue
                 else:
@@ -108,6 +115,7 @@ for path in POOL_FILES:
 
     print(f"Successfully loaded {len(lp_data)} pools")
 
+
 def get_pools_with_events(start_block: int = 0, end_block: int | None = None) -> set:
     """
     Get only the pools that have liquidity events in the given block range.
@@ -118,26 +126,27 @@ def get_pools_with_events(start_block: int = 0, end_block: int | None = None) ->
         .select("address", "block_number")
         .filter(polars.col("block_number") >= start_block)
     )
-    
+
     if end_block is not None:
         events = events.filter(polars.col("block_number") < end_block)
-    
+
     # Get unique pool addresses that have events
-    pools_with_events = set(
-        events.collect().get_column("address").unique().to_list()
-    )
+    pools_with_events = set(events.collect().get_column("address").unique().to_list())
     print(f"Found {len(pools_with_events)} pools with liquidity events")
     return pools_with_events
 
+
 def get_liquidity_events(
-    start_block: int = 0, end_block: int | None = None, pool_addresses: list | None = None
+    start_block: int = 0,
+    end_block: int | None = None,
+    pool_addresses: list | None = None,
 ) -> polars.LazyFrame:
     """
     Fetch the liquidity events for a given block range.
     """
     if pool_addresses is None:
         pool_addresses = [HexBytes(addr) for addr in lp_data.keys()]
-    
+
     events = (
         polars.scan_parquet(EVENTS_PATH / "*.parquet")
         .select(
@@ -164,21 +173,28 @@ def get_liquidity_events(
 
     return events
 
+
 try:
     # First try to load from database
     print("Attempting to load snapshot from database...")
     liquidity_snapshot = load_liquidity_snapshot_from_database()
-    
+
     if liquidity_snapshot:
         snapshot_last_block = liquidity_snapshot.pop("snapshot_block")
-        print(f"Loaded database snapshot: {len(liquidity_snapshot)} pools @ block {snapshot_last_block}")
-        
+        print(
+            f"Loaded database snapshot: {len(liquidity_snapshot)} pools @ block {snapshot_last_block}"
+        )
+
         # Convert string keys back to integers for processing
         for pool_address, snapshot in liquidity_snapshot.items():
             if isinstance(snapshot, dict):
                 liquidity_snapshot[pool_address] = {
-                    "tick_bitmap": {int(k): v for k, v in snapshot.get("tick_bitmap", {}).items()},
-                    "tick_data": {int(k): v for k, v in snapshot.get("tick_data", {}).items()},
+                    "tick_bitmap": {
+                        int(k): v for k, v in snapshot.get("tick_bitmap", {}).items()
+                    },
+                    "tick_data": {
+                        int(k): v for k, v in snapshot.get("tick_data", {}).items()
+                    },
                 }
     else:
         # Fallback to file-based snapshot
@@ -194,7 +210,9 @@ try:
             )
             for pool_address, snapshot in liquidity_snapshot.items():
                 liquidity_snapshot[pool_address] = {
-                    "tick_bitmap": {int(k): v for k, v in snapshot["tick_bitmap"].items()},
+                    "tick_bitmap": {
+                        int(k): v for k, v in snapshot["tick_bitmap"].items()
+                    },
                     "tick_data": {int(k): v for k, v in snapshot["tick_data"].items()},
                 }
         except FileNotFoundError:
@@ -249,7 +267,11 @@ for start_block in itertools.count(snapshot_last_block + 1, BLOCK_CHUNK_SIZE):
         last_event_block + 1,
     )
     liquidity_events_for_chunk = (
-        get_liquidity_events(start_block=start_block, end_block=end_block, pool_addresses=list(pools_with_events))
+        get_liquidity_events(
+            start_block=start_block,
+            end_block=end_block,
+            pool_addresses=list(pools_with_events),
+        )
         .collect()
         .with_columns(
             pool_address=polars.col("address"),
@@ -353,7 +375,7 @@ for start_block in itertools.count(snapshot_last_block + 1, BLOCK_CHUNK_SIZE):
             address=pool_address,
             block=None,
             liquidity=2**256 - 1,
-            sqrt_price_x96=0,   
+            sqrt_price_x96=0,
             tick=0,
             tick_bitmap={
                 int(k): UniswapV3BitmapAtWord(**v)
@@ -396,19 +418,19 @@ for start_block in itertools.count(snapshot_last_block + 1, BLOCK_CHUNK_SIZE):
         }
 
     liquidity_snapshot["snapshot_block"] = end_block - 1  # type: ignore
-    
+
     # Store to database first
     try:
         print("Storing snapshot to database...")
         store_liquidity_snapshot_to_database(
             liquidity_snapshot=dict(liquidity_snapshot),  # Make a copy
-            snapshot_block=end_block - 1
+            snapshot_block=end_block - 1,
         )
         print(f"Successfully stored snapshot to database at block {end_block - 1}")
     except Exception as e:
         print(f"Error storing to database: {e}")
         print("Continuing with file storage as backup...")
-    
+
     # Also save to file as backup
     pathlib.Path(SNAPSHOT_FILENAME).write_bytes(
         pydantic.TypeAdapter(dict).dump_json(

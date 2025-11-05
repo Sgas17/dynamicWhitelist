@@ -7,11 +7,12 @@ Build token whitelist based on multiple criteria:
 
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Set
+
 import aiohttp
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,9 @@ class TokenWhitelistBuilder:
         self.whitelist_tokens: Set[str] = set()
         self.token_sources: Dict[str, List[str]] = {}  # token -> [sources]
         self.token_info: Dict[str, Dict] = {}  # token -> {coingecko_id, symbol, etc}
-        self.unmapped_hyperliquid: Dict[str, str] = {}  # symbol -> name (not found in DB)
+        self.unmapped_hyperliquid: Dict[
+            str, str
+        ] = {}  # symbol -> name (not found in DB)
         self.unmapped_lighter: Dict[str, str] = {}  # symbol -> name (not found in DB)
 
     async def get_cross_chain_tokens(self) -> Set[str]:
@@ -87,44 +90,46 @@ class TokenWhitelistBuilder:
         # Group by token_id to see all chains for each token
         token_data = {}
         for row in results:
-            token_id = row['token_id']
-            symbol = row['symbol']
-            platform = row['platform']
-            address = row['address'].lower() if row['address'] else None
-            decimals = row['decimals']
-            chain_count = row['chain_count']
+            token_id = row["token_id"]
+            symbol = row["symbol"]
+            platform = row["platform"]
+            address = row["address"].lower() if row["address"] else None
+            decimals = row["decimals"]
+            chain_count = row["chain_count"]
 
             if token_id not in token_data:
                 token_data[token_id] = {
-                    'symbol': symbol,
-                    'decimals': decimals,
-                    'chains': {},
-                    'chain_count': chain_count
+                    "symbol": symbol,
+                    "decimals": decimals,
+                    "chains": {},
+                    "chain_count": chain_count,
                 }
 
             if address:
-                token_data[token_id]['chains'][platform] = address
+                token_data[token_id]["chains"][platform] = address
 
         # Extract Ethereum addresses for tokens on 2+ chains
         cross_chain_tokens = set()
         for token_id, data in token_data.items():
-            chains = data['chains']
-            chain_count = data['chain_count']
-            symbol = data['symbol']
-            decimals = data['decimals']
+            chains = data["chains"]
+            chain_count = data["chain_count"]
+            symbol = data["symbol"]
+            decimals = data["decimals"]
 
             # Get Ethereum address as the canonical one
-            eth_address = chains.get('ethereum')
+            eth_address = chains.get("ethereum")
             if eth_address:
                 cross_chain_tokens.add(eth_address)
                 self.token_info[eth_address] = {
-                    'coingecko_id': token_id,
-                    'symbol': symbol,
-                    'decimals': decimals,
-                    'chains': list(chains.keys())
+                    "coingecko_id": token_id,
+                    "symbol": symbol,
+                    "decimals": decimals,
+                    "chains": list(chains.keys()),
                 }
-                chain_names = ', '.join(chains.keys())
-                logger.debug(f"  ✓ {symbol} ({token_id}): {eth_address[:10]}... (on {chain_count} chains: {chain_names})")
+                chain_names = ", ".join(chains.keys())
+                logger.debug(
+                    f"  ✓ {symbol} ({token_id}): {eth_address[:10]}... (on {chain_count} chains: {chain_names})"
+                )
 
         logger.info(f"  Found {len(cross_chain_tokens)} cross-chain tokens")
         return cross_chain_tokens
@@ -165,7 +170,7 @@ class TokenWhitelistBuilder:
             for symbol in hyperliquid_symbols:
                 search_symbols.add(symbol)
                 # Handle "k" tokens (1000x lots): KSHIB -> SHIB, KPEPE -> PEPE, etc.
-                if symbol.startswith('K') and len(symbol) > 1:
+                if symbol.startswith("K") and len(symbol) > 1:
                     base_symbol = symbol[1:]  # Remove 'K' prefix
                     search_symbols.add(base_symbol)
                     k_token_mapping[base_symbol] = symbol
@@ -193,10 +198,10 @@ class TokenWhitelistBuilder:
             mapped_symbols = set()
 
             for row in results:
-                symbol = row['symbol']
-                address = row['address'].lower()
-                token_id = row['token_id']
-                decimals = row['decimals']
+                symbol = row["symbol"]
+                address = row["address"].lower()
+                token_id = row["token_id"]
+                decimals = row["decimals"]
 
                 hyperliquid_addresses.add(address)
 
@@ -205,14 +210,16 @@ class TokenWhitelistBuilder:
                 if symbol.upper() in k_token_mapping:
                     k_symbol = k_token_mapping[symbol.upper()]
                     mapped_symbols.add(k_symbol)
-                    logger.debug(f"  ✓ {k_symbol} (k-token) -> {symbol} -> {address[:10]}...")
+                    logger.debug(
+                        f"  ✓ {k_symbol} (k-token) -> {symbol} -> {address[:10]}..."
+                    )
 
                 if address not in self.token_info:
                     self.token_info[address] = {
-                        'coingecko_id': token_id,
-                        'symbol': symbol,
-                        'decimals': decimals,
-                        'chains': ['ethereum']
+                        "coingecko_id": token_id,
+                        "symbol": symbol,
+                        "decimals": decimals,
+                        "chains": ["ethereum"],
                     }
 
                 logger.debug(f"  ✓ {symbol} -> {address[:10]}...")
@@ -221,18 +228,25 @@ class TokenWhitelistBuilder:
             if unmapped:
                 # Store unmapped for manual mapping
                 for symbol in unmapped:
-                    token_data = next((t for t in tokens_data if t.base.upper() == symbol), None)
+                    token_data = next(
+                        (t for t in tokens_data if t.base.upper() == symbol), None
+                    )
                     if token_data:
                         self.unmapped_hyperliquid[symbol] = token_data.base
 
-                print(f"\n   ⚠️  Unmapped symbols ({len(unmapped)}): {', '.join(sorted(list(unmapped))[:20])}{'...' if len(unmapped) > 20 else ''}")
+                print(
+                    f"\n   ⚠️  Unmapped symbols ({len(unmapped)}): {', '.join(sorted(list(unmapped))[:20])}{'...' if len(unmapped) > 20 else ''}"
+                )
 
-            print(f"   Mapped {len(hyperliquid_addresses)} of {len(hyperliquid_symbols)} symbols")
+            print(
+                f"   Mapped {len(hyperliquid_addresses)} of {len(hyperliquid_symbols)} symbols"
+            )
             return hyperliquid_addresses
 
         except Exception as e:
             logger.error(f"   Error fetching Hyperliquid tokens: {e}")
             import traceback
+
             traceback.print_exc()
             return set()
 
@@ -252,9 +266,13 @@ class TokenWhitelistBuilder:
             url = "https://mainnet.zklighter.elliot.ai/api/v1/funding-rates"
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
                     if response.status != 200:
-                        logger.error(f"Failed to fetch from Lighter API: HTTP {response.status}")
+                        logger.error(
+                            f"Failed to fetch from Lighter API: HTTP {response.status}"
+                        )
                         return set()
 
                     data = await response.json()
@@ -285,13 +303,13 @@ class TokenWhitelistBuilder:
                     search_symbols.add(symbol)
 
                     # Handle "1000" prefix (1000x lots): 1000SHIB -> SHIB, 1000PEPE -> PEPE, etc.
-                    if symbol.startswith('1000') and len(symbol) > 4:
+                    if symbol.startswith("1000") and len(symbol) > 4:
                         base_symbol = symbol[4:]  # Remove '1000' prefix
                         search_symbols.add(base_symbol)
                         lot_token_mapping[base_symbol] = symbol
 
                     # Handle "K" prefix (1000x lots): KSHIB -> SHIB, KPEPE -> PEPE, etc.
-                    elif symbol.startswith('K') and len(symbol) > 1:
+                    elif symbol.startswith("K") and len(symbol) > 1:
                         base_symbol = symbol[1:]  # Remove 'K' prefix
                         search_symbols.add(base_symbol)
                         lot_token_mapping[base_symbol] = symbol
@@ -319,10 +337,10 @@ class TokenWhitelistBuilder:
                 mapped_symbols = set()
 
                 for row in results:
-                    symbol = row['symbol']
-                    address = row['address'].lower()
-                    token_id = row['token_id']
-                    decimals = row['decimals']
+                    symbol = row["symbol"]
+                    address = row["address"].lower()
+                    token_id = row["token_id"]
+                    decimals = row["decimals"]
 
                     lighter_addresses.add(address)
 
@@ -331,14 +349,16 @@ class TokenWhitelistBuilder:
                     if symbol.upper() in lot_token_mapping:
                         lot_symbol = lot_token_mapping[symbol.upper()]
                         mapped_symbols.add(lot_symbol)
-                        logger.debug(f"  ✓ {lot_symbol} (lot-token) -> {symbol} -> {address[:10]}...")
+                        logger.debug(
+                            f"  ✓ {lot_symbol} (lot-token) -> {symbol} -> {address[:10]}..."
+                        )
 
                     if address not in self.token_info:
                         self.token_info[address] = {
-                            'coingecko_id': token_id,
-                            'symbol': symbol,
-                            'decimals': decimals,
-                            'chains': ['ethereum']
+                            "coingecko_id": token_id,
+                            "symbol": symbol,
+                            "decimals": decimals,
+                            "chains": ["ethereum"],
                         }
 
                     logger.debug(f"  ✓ {symbol} -> {address[:10]}...")
@@ -349,9 +369,13 @@ class TokenWhitelistBuilder:
                     for symbol in unmapped:
                         self.unmapped_lighter[symbol] = symbol
 
-                    print(f"\n   ⚠️  Unmapped symbols: {', '.join(sorted(list(unmapped))[:10])}{'...' if len(unmapped) > 10 else ''}")
+                    print(
+                        f"\n   ⚠️  Unmapped symbols: {', '.join(sorted(list(unmapped))[:10])}{'...' if len(unmapped) > 10 else ''}"
+                    )
 
-                print(f"   Mapped {len(lighter_addresses)} of {len(lighter_symbols)} symbols")
+                print(
+                    f"   Mapped {len(lighter_addresses)} of {len(lighter_symbols)} symbols"
+                )
                 return lighter_addresses
 
             return set()
@@ -359,6 +383,7 @@ class TokenWhitelistBuilder:
         except Exception as e:
             logger.error(f"   Error fetching Lighter tokens: {e}")
             import traceback
+
             traceback.print_exc()
             return set()
 
@@ -383,11 +408,11 @@ class TokenWhitelistBuilder:
 
             # Connect to transfers service database (separate from main database)
             transfers_db_config = {
-                'host': 'localhost',
-                'port': 5433,  # Transfers service uses different port
-                'database': 'transfers',
-                'user': 'transfers_user',
-                'password': 'transfers_pass',
+                "host": "localhost",
+                "port": 5433,  # Transfers service uses different port
+                "database": "transfers",
+                "user": "transfers_user",
+                "password": "transfers_pass",
             }
 
             # Query the materialized view for fast performance
@@ -412,19 +437,19 @@ class TokenWhitelistBuilder:
 
             top_tokens = set()
             for row in results:
-                token_address = row['token_address'].lower()
-                transfer_count = int(row['transfer_count_24h'])
-                ranking_score = float(row['ranking_score'])
+                token_address = row["token_address"].lower()
+                transfer_count = int(row["transfer_count_24h"])
+                ranking_score = float(row["ranking_score"])
                 top_tokens.add(token_address)
 
                 # Add to token_info if not already there
                 if token_address not in self.token_info:
                     self.token_info[token_address] = {
-                        'transfer_count_24h': transfer_count,
-                        'unique_senders_24h': int(row['unique_senders_24h']),
-                        'unique_receivers_24h': int(row['unique_receivers_24h']),
-                        'ranking_score': ranking_score,
-                        'last_updated': str(row['last_updated'])
+                        "transfer_count_24h": transfer_count,
+                        "unique_senders_24h": int(row["unique_senders_24h"]),
+                        "unique_receivers_24h": int(row["unique_receivers_24h"]),
+                        "ranking_score": ranking_score,
+                        "last_updated": str(row["last_updated"]),
                     }
 
                 logger.debug(
@@ -437,9 +462,14 @@ class TokenWhitelistBuilder:
 
         except Exception as e:
             logger.warning(f"    Error fetching top transferred tokens: {e}")
-            print(f"   This likely means the transfers service is not running or not reachable")
-            print(f"   Make sure the transfers-service is running: cd ~/transfers-service && docker-compose up -d")
+            print(
+                f"   This likely means the transfers service is not running or not reachable"
+            )
+            print(
+                f"   Make sure the transfers-service is running: cd ~/transfers-service && docker-compose up -d"
+            )
             import traceback
+
             traceback.print_exc()
             return set()
 
@@ -451,29 +481,41 @@ class TokenWhitelistBuilder:
         # Save Hyperliquid unmapped
         if self.unmapped_hyperliquid:
             hyperliquid_path = output_dir / "hyperliquid_unmapped.json"
-            with open(hyperliquid_path, 'w') as f:
-                json.dump({
-                    "count": len(self.unmapped_hyperliquid),
-                    "unmapped_symbols": sorted(list(self.unmapped_hyperliquid.keys())),
-                    "details": self.unmapped_hyperliquid
-                }, f, indent=2)
-            logger.info(f"💾 Saved {len(self.unmapped_hyperliquid)} unmapped Hyperliquid tokens to {hyperliquid_path}")
+            with open(hyperliquid_path, "w") as f:
+                json.dump(
+                    {
+                        "count": len(self.unmapped_hyperliquid),
+                        "unmapped_symbols": sorted(
+                            list(self.unmapped_hyperliquid.keys())
+                        ),
+                        "details": self.unmapped_hyperliquid,
+                    },
+                    f,
+                    indent=2,
+                )
+            logger.info(
+                f"💾 Saved {len(self.unmapped_hyperliquid)} unmapped Hyperliquid tokens to {hyperliquid_path}"
+            )
 
         # Save Lighter unmapped
         if self.unmapped_lighter:
             lighter_path = output_dir / "lighter_unmapped.json"
-            with open(lighter_path, 'w') as f:
-                json.dump({
-                    "count": len(self.unmapped_lighter),
-                    "unmapped_symbols": sorted(list(self.unmapped_lighter.keys())),
-                    "details": self.unmapped_lighter
-                }, f, indent=2)
-            logger.info(f"💾 Saved {len(self.unmapped_lighter)} unmapped Lighter tokens to {lighter_path}")
+            with open(lighter_path, "w") as f:
+                json.dump(
+                    {
+                        "count": len(self.unmapped_lighter),
+                        "unmapped_symbols": sorted(list(self.unmapped_lighter.keys())),
+                        "details": self.unmapped_lighter,
+                    },
+                    f,
+                    indent=2,
+                )
+            logger.info(
+                f"💾 Saved {len(self.unmapped_lighter)} unmapped Lighter tokens to {lighter_path}"
+            )
 
     async def get_all_pairs_and_tokens(
-        self,
-        chain: str = "ethereum",
-        whitelist_tokens: Set[str] = None
+        self, chain: str = "ethereum", whitelist_tokens: Set[str] = None
     ) -> Dict:
         """
         DEPRECATED: Use PoolFilter class instead for better performance.
@@ -496,19 +538,21 @@ class TokenWhitelistBuilder:
         - v3_pairs: filtered to V3 only
         - v4_pairs: filtered to V4 only
         """
-        logger.warning("get_all_pairs_and_tokens() is DEPRECATED. Use PoolFilter class for better performance.")
+        logger.warning(
+            "get_all_pairs_and_tokens() is DEPRECATED. Use PoolFilter class for better performance."
+        )
         logger.info("🔍 Fetching pairs where both tokens are whitelisted...")
 
         if not whitelist_tokens:
             logger.warning("No whitelist tokens provided, returning empty dictionaries")
             return {
-                'all_tokens': {},
-                'all_pairs': {},
-                'decimals': {},
-                'symbols': {},
-                'v2_pairs': {},
-                'v3_pairs': {},
-                'v4_pairs': {}
+                "all_tokens": {},
+                "all_pairs": {},
+                "decimals": {},
+                "symbols": {},
+                "v2_pairs": {},
+                "v3_pairs": {},
+                "v4_pairs": {},
             }
 
         # Get protocols for this chain
@@ -522,13 +566,13 @@ class TokenWhitelistBuilder:
         if not chain_id:
             logger.error(f"Chain ID not found for chain: {chain}")
             return {
-                'all_tokens': {},
-                'all_pairs': {},
-                'decimals': {},
-                'symbols': {},
-                'v2_pairs': {},
-                'v3_pairs': {},
-                'v4_pairs': {}
+                "all_tokens": {},
+                "all_pairs": {},
+                "decimals": {},
+                "symbols": {},
+                "v2_pairs": {},
+                "v3_pairs": {},
+                "v4_pairs": {},
             }
 
         # Both table names for this chain
@@ -579,16 +623,21 @@ class TokenWhitelistBuilder:
                         try:
                             async with self.storage.pool.acquire() as conn:
                                 results = await conn.fetch(query, chain, factory_lower)
-                                logger.debug(f"Fetched {len(results)} pools from {table} for {protocol}/{factory[:10]}...")
+                                logger.debug(
+                                    f"Fetched {len(results)} pools from {table} for {protocol}/{factory[:10]}..."
+                                )
 
                             # Process results from this table
                             for row in results:
-                                pool_addr = row['pool_address'].lower()
-                                token0_addr = row['token0_address'].lower()
-                                token1_addr = row['token1_address'].lower()
+                                pool_addr = row["pool_address"].lower()
+                                token0_addr = row["token0_address"].lower()
+                                token1_addr = row["token1_address"].lower()
 
                                 # Only include pairs where BOTH tokens are in whitelist
-                                if token0_addr not in whitelist_tokens or token1_addr not in whitelist_tokens:
+                                if (
+                                    token0_addr not in whitelist_tokens
+                                    or token1_addr not in whitelist_tokens
+                                ):
                                     continue
 
                                 # Skip if we already have this pool
@@ -597,16 +646,20 @@ class TokenWhitelistBuilder:
 
                                 # Build token0 data (symbol should already have fallback from SQL)
                                 token0 = {
-                                    'address': token0_addr,
-                                    'symbol': row['token0_symbol'],
-                                    'decimals': int(row['token0_decimals']) if row['token0_decimals'] else 18
+                                    "address": token0_addr,
+                                    "symbol": row["token0_symbol"],
+                                    "decimals": int(row["token0_decimals"])
+                                    if row["token0_decimals"]
+                                    else 18,
                                 }
 
                                 # Build token1 data (symbol should already have fallback from SQL)
                                 token1 = {
-                                    'address': token1_addr,
-                                    'symbol': row['token1_symbol'],
-                                    'decimals': int(row['token1_decimals']) if row['token1_decimals'] else 18
+                                    "address": token1_addr,
+                                    "symbol": row["token1_symbol"],
+                                    "decimals": int(row["token1_decimals"])
+                                    if row["token1_decimals"]
+                                    else 18,
                                 }
 
                                 # Ensure token0 < token1 (canonical ordering)
@@ -615,14 +668,14 @@ class TokenWhitelistBuilder:
                                     token0_addr, token1_addr = token1_addr, token0_addr
 
                                 # Determine exchange name
-                                protocol_lower = protocol.lower().replace('_', '')
-                                if 'uniswap' in protocol_lower:
-                                    if 'v2' in protocol_lower:
-                                        exchange = 'uniswapV2'
-                                    elif 'v3' in protocol_lower:
-                                        exchange = 'uniswapV3'
-                                    elif 'v4' in protocol_lower:
-                                        exchange = 'uniswapV4'
+                                protocol_lower = protocol.lower().replace("_", "")
+                                if "uniswap" in protocol_lower:
+                                    if "v2" in protocol_lower:
+                                        exchange = "uniswapV2"
+                                    elif "v3" in protocol_lower:
+                                        exchange = "uniswapV3"
+                                    elif "v4" in protocol_lower:
+                                        exchange = "uniswapV4"
                                     else:
                                         exchange = protocol
                                 else:
@@ -630,26 +683,29 @@ class TokenWhitelistBuilder:
 
                                 # Parse additional_data and extract stable flag
                                 stable = None
-                                if row['additional_data']:
-                                    additional_data = row['additional_data']
+                                if row["additional_data"]:
+                                    additional_data = row["additional_data"]
                                     # Handle both dict and JSON string
                                     if isinstance(additional_data, str):
                                         try:
                                             import json
-                                            additional_data = json.loads(additional_data)
+
+                                            additional_data = json.loads(
+                                                additional_data
+                                            )
                                         except (json.JSONDecodeError, TypeError):
                                             additional_data = {}
                                     if isinstance(additional_data, dict):
-                                        stable = additional_data.get('stable')
+                                        stable = additional_data.get("stable")
 
                                 # Build pair data
                                 pair_data = {
-                                    'token0': token0,
-                                    'token1': token1,
-                                    'exchange': exchange,
-                                    'fee': row['fee'],
-                                    'tickSpacing': row['tick_spacing'],
-                                    'stable': stable
+                                    "token0": token0,
+                                    "token1": token1,
+                                    "exchange": exchange,
+                                    "fee": row["fee"],
+                                    "tickSpacing": row["tick_spacing"],
+                                    "stable": stable,
                                 }
 
                                 # Add to dictionaries
@@ -661,41 +717,44 @@ class TokenWhitelistBuilder:
                             # Table might not exist (e.g., cryo table not yet created)
                             logger.debug(f"Could not query {table}: {e}")
                             continue
-                        
+
             except Exception as e:
                 logger.warning(f"Error fetching {protocol} pairs: {e}")
                 continue
-        
+
         logger.info(f"  Found {len(all_pairs)} total pairs")
         logger.info(f"  Found {len(all_tokens)} unique tokens")
-        
+
         # Build helper dictionaries
-        decimals = {addr: token['decimals'] for addr, token in all_tokens.items()}
-        symbols = {addr: token['symbol'] for addr, token in all_tokens.items()}
-        
+        decimals = {addr: token["decimals"] for addr, token in all_tokens.items()}
+        symbols = {addr: token["symbol"] for addr, token in all_tokens.items()}
+
         # Filter by protocol
-        v2_pairs = {addr: pair for addr, pair in all_pairs.items() if 'V2' in pair['exchange']}
-        v3_pairs = {addr: pair for addr, pair in all_pairs.items() if 'V3' in pair['exchange']}
-        v4_pairs = {addr: pair for addr, pair in all_pairs.items() if 'V4' in pair['exchange']}
-        
+        v2_pairs = {
+            addr: pair for addr, pair in all_pairs.items() if "V2" in pair["exchange"]
+        }
+        v3_pairs = {
+            addr: pair for addr, pair in all_pairs.items() if "V3" in pair["exchange"]
+        }
+        v4_pairs = {
+            addr: pair for addr, pair in all_pairs.items() if "V4" in pair["exchange"]
+        }
+
         logger.info(f"  V2 pairs: {len(v2_pairs)}")
         logger.info(f"  V3 pairs: {len(v3_pairs)}")
         logger.info(f"  V4 pairs: {len(v4_pairs)}")
-        
+
         return {
-            'all_tokens': all_tokens,
-            'all_pairs': all_pairs,
-            'decimals': decimals,
-            'symbols': symbols,
-            'v2_pairs': v2_pairs,
-            'v3_pairs': v3_pairs,
-            'v4_pairs': v4_pairs
+            "all_tokens": all_tokens,
+            "all_pairs": all_pairs,
+            "decimals": decimals,
+            "symbols": symbols,
+            "v2_pairs": v2_pairs,
+            "v3_pairs": v3_pairs,
+            "v4_pairs": v4_pairs,
         }
 
-    async def build_whitelist(
-        self,
-        top_transfers: int = 100
-    ) -> Dict[str, any]:
+    async def build_whitelist(self, top_transfers: int = 100) -> Dict[str, any]:
         """
         Build token whitelist from multiple sources.
 
@@ -714,9 +773,9 @@ class TokenWhitelistBuilder:
             - unmapped_hyperliquid: Symbols that couldn't be mapped to Ethereum addresses
             - unmapped_lighter: Symbols that couldn't be mapped to Ethereum addresses
         """
-        logger.info("="*70)
+        logger.info("=" * 70)
         print("🏗️  Building Token Whitelist")
-        logger.info("="*70)
+        logger.info("=" * 70)
 
         # Criterion 1: Cross-chain tokens
         cross_chain = await self.get_cross_chain_tokens()
@@ -752,7 +811,7 @@ class TokenWhitelistBuilder:
         # Print summary
         print("\n" + "=" * 70)
         print("📈 Whitelist Summary")
-        logger.info("="*70)
+        logger.info("=" * 70)
         logger.info(f"Total whitelisted tokens: {len(self.whitelist_tokens)}")
         print(f"\nBy source:")
         logger.info(f"  Cross-chain: {len(cross_chain)}")
@@ -769,9 +828,11 @@ class TokenWhitelistBuilder:
 
         if multi_source:
             print(f"\n✨ Tokens from multiple sources ({len(multi_source)}):")
-            for token, sources in sorted(multi_source.items(), key=lambda x: -len(x[1]))[:20]:
+            for token, sources in sorted(
+                multi_source.items(), key=lambda x: -len(x[1])
+            )[:20]:
                 info = self.token_info.get(token, {})
-                symbol = info.get('symbol', '?')
+                symbol = info.get("symbol", "?")
                 logger.info(f"  {symbol:8s} {token[:10]}... - {', '.join(sources)}")
 
         # Save unmapped tokens for manual review
@@ -803,7 +864,7 @@ class TokenWhitelistBuilder:
             "token_info": self.token_info,
         }
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(data, f, indent=2)
 
         print(f"\n💾 Saved whitelist to {output_path}")
@@ -815,13 +876,13 @@ async def main():
     config = ConfigManager()
 
     db_config = {
-        'host': config.database.POSTGRES_HOST,
-        'port': config.database.POSTGRES_PORT,
-        'user': config.database.POSTGRES_USER,
-        'password': config.database.POSTGRES_PASSWORD,
-        'database': config.database.POSTGRES_DB,
-        'pool_size': 10,
-        'pool_timeout': 10
+        "host": config.database.POSTGRES_HOST,
+        "port": config.database.POSTGRES_PORT,
+        "user": config.database.POSTGRES_USER,
+        "password": config.database.POSTGRES_PASSWORD,
+        "database": config.database.POSTGRES_DB,
+        "pool_size": 10,
+        "pool_timeout": 10,
     }
 
     storage = PostgresStorage(config=db_config)

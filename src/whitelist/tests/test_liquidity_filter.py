@@ -4,14 +4,18 @@ Test suite for PoolLiquidityFilter.
 Tests the liquidity filtering functionality for V2, V3, and V4 pools.
 """
 
-import pytest
 from decimal import Decimal
 
+import pytest
 from web3 import Web3
 
 from ...config import ConfigManager
 from ...core.storage.postgres import PostgresStorage
-from ..liquidity_filter import PoolLiquidityFilter, normalize_token_for_pricing, WETH_ADDRESS
+from ..liquidity_filter import (
+    WETH_ADDRESS,
+    PoolLiquidityFilter,
+    normalize_token_for_pricing,
+)
 from ..orchestrator import WhitelistOrchestrator
 
 
@@ -40,7 +44,9 @@ class TestNormalization:
         """Test that normalization is case-insensitive."""
         zero_upper = "0X0000000000000000000000000000000000000000"
         zero_lower = "0x0000000000000000000000000000000000000000"
-        assert normalize_token_for_pricing(zero_upper) == normalize_token_for_pricing(zero_lower)
+        assert normalize_token_for_pricing(zero_upper) == normalize_token_for_pricing(
+            zero_lower
+        )
 
 
 class TestHyperliquidPrices:
@@ -54,9 +60,7 @@ class TestHyperliquidPrices:
         web3 = Web3(Web3.HTTPProvider(rpc_url))
 
         filter_instance = PoolLiquidityFilter(
-            web3=web3,
-            min_liquidity_usd=10000,
-            chain="ethereum"
+            web3=web3, min_liquidity_usd=10000, chain="ethereum"
         )
 
         prices = await filter_instance.fetch_hyperliquid_prices()
@@ -84,9 +88,7 @@ class TestPriceCalculation:
         web3 = Web3(Web3.HTTPProvider(rpc_url))
 
         filter_instance = PoolLiquidityFilter(
-            web3=web3,
-            min_liquidity_usd=10000,
-            chain="ethereum"
+            web3=web3, min_liquidity_usd=10000, chain="ethereum"
         )
 
         # Test case: USDC/ETH pool
@@ -103,12 +105,13 @@ class TestPriceCalculation:
             reserve_other=reserve_eth,
             decimals_token=decimals_usdc,
             decimals_other=decimals_eth,
-            price_other=price_eth
+            price_other=price_eth,
         )
 
         # USDC price should be very close to $1
-        assert abs(calculated_usdc_price - Decimal("1")) < Decimal("0.01"), \
+        assert abs(calculated_usdc_price - Decimal("1")) < Decimal("0.01"), (
             f"USDC price should be close to $1, got {calculated_usdc_price}"
+        )
 
 
 class TestV2PoolFiltering:
@@ -122,37 +125,31 @@ class TestV2PoolFiltering:
         web3 = Web3(Web3.HTTPProvider(rpc_url))
 
         filter_instance = PoolLiquidityFilter(
-            web3=web3,
-            min_liquidity_usd=10000,
-            chain="ethereum"
+            web3=web3, min_liquidity_usd=10000, chain="ethereum"
         )
 
         # Mock pool data - ETH/USDC pool
         weth_addr = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
         usdc_addr = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
-        pool_addr = "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc"  # Real ETH/USDC V2 pool
+        pool_addr = (
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc"  # Real ETH/USDC V2 pool
+        )
 
         mock_pools = {
             pool_addr: {
-                'token0': {'address': usdc_addr, 'symbol': 'USDC', 'decimals': 6},
-                'token1': {'address': weth_addr, 'symbol': 'WETH', 'decimals': 18},
-                'exchange': 'uniswapV2',
-                'fee': 3000
+                "token0": {"address": usdc_addr, "symbol": "USDC", "decimals": 6},
+                "token1": {"address": weth_addr, "symbol": "WETH", "decimals": 18},
+                "exchange": "uniswapV2",
+                "fee": 3000,
             }
         }
 
-        token_symbols = {
-            usdc_addr: 'USDC',
-            weth_addr: 'WETH'
-        }
+        token_symbols = {usdc_addr: "USDC", weth_addr: "WETH"}
 
-        token_decimals = {
-            usdc_addr: 6,
-            weth_addr: 18
-        }
+        token_decimals = {usdc_addr: 6, weth_addr: 18}
 
         hyperliquid_prices = {
-            'ETH': Decimal('4000'),  # Mock ETH price
+            "ETH": Decimal("4000"),  # Mock ETH price
         }
 
         # Filter pools (this will make actual RPC calls to get reserves)
@@ -160,7 +157,7 @@ class TestV2PoolFiltering:
             pools=mock_pools,
             token_symbols=token_symbols,
             token_decimals=token_decimals,
-            hyperliquid_symbol_prices=hyperliquid_prices
+            hyperliquid_symbol_prices=hyperliquid_prices,
         )
 
         # Should filter correctly based on actual liquidity
@@ -178,9 +175,7 @@ class TestV4NativeETH:
         web3 = Web3(Web3.HTTPProvider(rpc_url))
 
         filter_instance = PoolLiquidityFilter(
-            web3=web3,
-            min_liquidity_usd=10000,
-            chain="ethereum"
+            web3=web3, min_liquidity_usd=10000, chain="ethereum"
         )
 
         # Mock V4 pool with native ETH (zero address) and USDC
@@ -190,28 +185,28 @@ class TestV4NativeETH:
 
         mock_pools = {
             pool_id: {
-                'token0': {'address': zero_addr, 'symbol': 'ETH', 'decimals': 18},
-                'token1': {'address': usdc_addr, 'symbol': 'USDC', 'decimals': 6},
-                'exchange': 'uniswapV4',
-                'fee': 3000
+                "token0": {"address": zero_addr, "symbol": "ETH", "decimals": 18},
+                "token1": {"address": usdc_addr, "symbol": "USDC", "decimals": 6},
+                "exchange": "uniswapV4",
+                "fee": 3000,
             }
         }
 
         token_symbols = {
-            zero_addr: 'ETH',
-            usdc_addr: 'USDC',
-            WETH_ADDRESS.lower(): 'WETH'  # Also provide WETH
+            zero_addr: "ETH",
+            usdc_addr: "USDC",
+            WETH_ADDRESS.lower(): "WETH",  # Also provide WETH
         }
 
         token_decimals = {
             zero_addr: 18,
             usdc_addr: 6,
-            WETH_ADDRESS.lower(): 18  # Also provide WETH decimals
+            WETH_ADDRESS.lower(): 18,  # Also provide WETH decimals
         }
 
         token_prices = {
-            WETH_ADDRESS.lower(): Decimal('4000'),  # WETH price
-            usdc_addr: Decimal('1')
+            WETH_ADDRESS.lower(): Decimal("4000"),  # WETH price
+            usdc_addr: Decimal("1"),
         }
 
         # This should not crash due to missing zero address price
@@ -220,7 +215,7 @@ class TestV4NativeETH:
             pools=mock_pools,
             token_symbols=token_symbols,
             token_decimals=token_decimals,
-            token_prices=token_prices
+            token_prices=token_prices,
         )
 
         # Test passes if no exception is raised
@@ -238,13 +233,13 @@ class TestFullPipeline:
         config = ConfigManager()
 
         db_config = {
-            'host': config.database.POSTGRES_HOST,
-            'port': config.database.POSTGRES_PORT,
-            'user': config.database.POSTGRES_USER,
-            'password': config.database.POSTGRES_PASSWORD,
-            'database': config.database.POSTGRES_DB,
-            'pool_size': 10,
-            'pool_timeout': 10
+            "host": config.database.POSTGRES_HOST,
+            "port": config.database.POSTGRES_PORT,
+            "user": config.database.POSTGRES_USER,
+            "password": config.database.POSTGRES_PASSWORD,
+            "database": config.database.POSTGRES_DB,
+            "pool_size": 10,
+            "pool_timeout": 10,
         }
 
         storage = PostgresStorage(config=db_config)
@@ -257,25 +252,27 @@ class TestFullPipeline:
             result = await orchestrator.run_pipeline(
                 chain="ethereum",
                 top_transfers=10,
-                protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"]
+                protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"],
             )
 
             # Validate structure
-            assert 'whitelist' in result
-            assert 'stage1_pools' in result
-            assert 'stage2_pools' in result
-            assert 'token_prices' in result
+            assert "whitelist" in result
+            assert "stage1_pools" in result
+            assert "stage2_pools" in result
+            assert "token_prices" in result
 
             # Validate whitelist
-            assert result['whitelist']['total_tokens'] > 0
-            assert len(result['whitelist']['tokens']) > 0
+            assert result["whitelist"]["total_tokens"] > 0
+            assert len(result["whitelist"]["tokens"]) > 0
 
             # Validate pools
-            total_pools = result['stage1_pools']['count'] + result['stage2_pools']['count']
+            total_pools = (
+                result["stage1_pools"]["count"] + result["stage2_pools"]["count"]
+            )
             assert total_pools >= 0  # May be 0 if no pools meet liquidity threshold
 
             # Validate token prices
-            assert isinstance(result['token_prices'], dict)
+            assert isinstance(result["token_prices"], dict)
 
         finally:
             await storage.disconnect()

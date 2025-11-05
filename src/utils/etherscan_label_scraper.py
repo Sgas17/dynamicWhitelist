@@ -5,14 +5,15 @@ This module scrapes token/address labels directly from Etherscan's public pages
 to identify phishing tokens, scams, and other malicious addresses.
 """
 
-import time
+import json
 import logging
-from typing import Optional, Dict, List
+import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional
+
 import requests
 from bs4 import BeautifulSoup
-from pathlib import Path
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +46,7 @@ class EtherscanLabelScraper:
         """
         self.session = requests.Session()
         self.session.headers.update(
-            {
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
-            }
+            {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
         )
 
         if cache_dir:
@@ -94,9 +93,7 @@ class EtherscanLabelScraper:
             except Exception as e:
                 logger.warning(f"Failed to save cache: {e}")
 
-    def get_address_label(
-        self, address: str, use_cache: bool = True
-    ) -> EtherscanLabel:
+    def get_address_label(self, address: str, use_cache: bool = True) -> EtherscanLabel:
         """
         Get label information for an address.
 
@@ -168,10 +165,13 @@ class EtherscanLabelScraper:
                 for span in all_spans:
                     text = span.text.strip()
                     # Nametags often start with specific patterns
-                    if any(
-                        text.startswith(prefix)
-                        for prefix in ["Fake_", "Phish", "Scam", "MEV"]
-                    ) and len(text) > 3:
+                    if (
+                        any(
+                            text.startswith(prefix)
+                            for prefix in ["Fake_", "Phish", "Scam", "MEV"]
+                        )
+                        and len(text) > 3
+                    ):
                         label.nametag = text
                         break
 
@@ -195,8 +195,7 @@ class EtherscanLabelScraper:
                 for div in label_divs:
                     text = div.text.strip()
                     if "/" in text and any(
-                        keyword in text.lower()
-                        for keyword in ["phish", "hack", "scam"]
+                        keyword in text.lower() for keyword in ["phish", "hack", "scam"]
                     ):
                         label.label = text
                         break
@@ -274,7 +273,7 @@ class EtherscanLabelScraper:
         results = {}
 
         for i, address in enumerate(addresses):
-            logger.info(f"Checking address {i+1}/{len(addresses)}: {address}")
+            logger.info(f"Checking address {i + 1}/{len(addresses)}: {address}")
             results[address] = self.get_address_label(address, use_cache=use_cache)
 
         return results
@@ -282,12 +281,16 @@ class EtherscanLabelScraper:
     def get_phishing_addresses(self) -> List[str]:
         """Get list of all cached phishing addresses."""
         return [
-            addr for addr, label in self.cache.items() if label.is_phishing or label.is_scam
+            addr
+            for addr, label in self.cache.items()
+            if label.is_phishing or label.is_scam
         ]
 
 
 # Convenience functions
-def is_phishing_token(address: str, scraper: Optional[EtherscanLabelScraper] = None) -> bool:
+def is_phishing_token(
+    address: str, scraper: Optional[EtherscanLabelScraper] = None
+) -> bool:
     """
     Check if a token address is marked as phishing on Etherscan.
 
@@ -327,9 +330,7 @@ def filter_phishing_tokens(
         if not (label.is_phishing or label.is_scam):
             clean_addresses.append(address)
         else:
-            logger.info(
-                f"Filtered out {address}: {label.nametag} ({label.label})"
-            )
+            logger.info(f"Filtered out {address}: {label.nametag} ({label.label})")
 
     return clean_addresses
 

@@ -16,8 +16,7 @@ from src.core.storage.postgres import PostgresStorage
 
 
 async def get_v2_pools_with_trusted_tokens(
-    storage: PostgresStorage,
-    trusted_tokens: Dict[str, str]
+    storage: PostgresStorage, trusted_tokens: Dict[str, str]
 ) -> List[Dict]:
     """
     Query V2 pools from database and filter by trusted tokens.
@@ -57,20 +56,23 @@ async def get_v2_pools_with_trusted_tokens(
 
         # Add which tokens are trusted
         trusted_in_pool = []
-        if pool_dict['token0'].lower() in token_name_map:
-            trusted_in_pool.append(f"token0={token_name_map[pool_dict['token0'].lower()]}")
-        if pool_dict['token1'].lower() in token_name_map:
-            trusted_in_pool.append(f"token1={token_name_map[pool_dict['token1'].lower()]}")
+        if pool_dict["token0"].lower() in token_name_map:
+            trusted_in_pool.append(
+                f"token0={token_name_map[pool_dict['token0'].lower()]}"
+            )
+        if pool_dict["token1"].lower() in token_name_map:
+            trusted_in_pool.append(
+                f"token1={token_name_map[pool_dict['token1'].lower()]}"
+            )
 
-        pool_dict['trusted_tokens'] = ", ".join(trusted_in_pool)
+        pool_dict["trusted_tokens"] = ", ".join(trusted_in_pool)
         pools.append(pool_dict)
 
     return pools
 
 
 async def get_v3_pools_with_trusted_tokens(
-    storage: PostgresStorage,
-    trusted_tokens: Dict[str, str]
+    storage: PostgresStorage, trusted_tokens: Dict[str, str]
 ) -> List[Dict]:
     """
     Query V3 pools from database and filter by trusted tokens.
@@ -112,20 +114,23 @@ async def get_v3_pools_with_trusted_tokens(
 
         # Add which tokens are trusted
         trusted_in_pool = []
-        if pool_dict['token0'].lower() in token_name_map:
-            trusted_in_pool.append(f"token0={token_name_map[pool_dict['token0'].lower()]}")
-        if pool_dict['token1'].lower() in token_name_map:
-            trusted_in_pool.append(f"token1={token_name_map[pool_dict['token1'].lower()]}")
+        if pool_dict["token0"].lower() in token_name_map:
+            trusted_in_pool.append(
+                f"token0={token_name_map[pool_dict['token0'].lower()]}"
+            )
+        if pool_dict["token1"].lower() in token_name_map:
+            trusted_in_pool.append(
+                f"token1={token_name_map[pool_dict['token1'].lower()]}"
+            )
 
-        pool_dict['trusted_tokens'] = ", ".join(trusted_in_pool)
+        pool_dict["trusted_tokens"] = ", ".join(trusted_in_pool)
         pools.append(pool_dict)
 
     return pools
 
 
 async def get_v4_pools_with_trusted_tokens(
-    storage: PostgresStorage,
-    trusted_tokens: Dict[str, str]
+    storage: PostgresStorage, trusted_tokens: Dict[str, str]
 ) -> List[Dict]:
     """
     Query V4 pools from database and filter by trusted tokens.
@@ -167,12 +172,16 @@ async def get_v4_pools_with_trusted_tokens(
 
         # Add which tokens are trusted
         trusted_in_pool = []
-        if pool_dict['currency0'].lower() in token_name_map:
-            trusted_in_pool.append(f"currency0={token_name_map[pool_dict['currency0'].lower()]}")
-        if pool_dict['currency1'].lower() in token_name_map:
-            trusted_in_pool.append(f"currency1={token_name_map[pool_dict['currency1'].lower()]}")
+        if pool_dict["currency0"].lower() in token_name_map:
+            trusted_in_pool.append(
+                f"currency0={token_name_map[pool_dict['currency0'].lower()]}"
+            )
+        if pool_dict["currency1"].lower() in token_name_map:
+            trusted_in_pool.append(
+                f"currency1={token_name_map[pool_dict['currency1'].lower()]}"
+            )
 
-        pool_dict['trusted_tokens'] = ", ".join(trusted_in_pool)
+        pool_dict["trusted_tokens"] = ", ".join(trusted_in_pool)
         pools.append(pool_dict)
 
     return pools
@@ -195,13 +204,13 @@ async def main():
 
     # Initialize database storage
     db_config = {
-        'host': config_manager.database.POSTGRES_HOST,
-        'port': config_manager.database.POSTGRES_PORT,
-        'user': config_manager.database.POSTGRES_USER,
-        'password': config_manager.database.POSTGRES_PASSWORD,
-        'database': config_manager.database.POSTGRES_DB,
-        'pool_size': 10,
-        'pool_timeout': 10
+        "host": config_manager.database.POSTGRES_HOST,
+        "port": config_manager.database.POSTGRES_PORT,
+        "user": config_manager.database.POSTGRES_USER,
+        "password": config_manager.database.POSTGRES_PASSWORD,
+        "database": config_manager.database.POSTGRES_DB,
+        "pool_size": 10,
+        "pool_timeout": 10,
     }
     storage = PostgresStorage(config=db_config)
     await storage.connect()
@@ -216,7 +225,7 @@ async def main():
         if v2_pools:
             print(f"\n📋 Sample V2 pools:")
             for i, pool in enumerate(v2_pools[:5]):
-                print(f"   {i+1}. Pool: {pool['pool_address'][:10]}...")
+                print(f"   {i + 1}. Pool: {pool['pool_address'][:10]}...")
                 print(f"      {pool['trusted_tokens']}")
 
         # Query V3 pools
@@ -228,7 +237,7 @@ async def main():
         if v3_pools:
             print(f"\n📋 Sample V3 pools:")
             for i, pool in enumerate(v3_pools[:5]):
-                print(f"   {i+1}. Pool: {pool['pool_address'][:10]}...")
+                print(f"   {i + 1}. Pool: {pool['pool_address'][:10]}...")
                 print(f"      {pool['trusted_tokens']}")
                 print(f"      Fee: {pool['fee']} bps")
 
@@ -241,7 +250,7 @@ async def main():
         if v4_pools:
             print(f"\n📋 Sample V4 pools:")
             for i, pool in enumerate(v4_pools[:5]):
-                print(f"   {i+1}. Pool ID: {pool['pool_id'][:10]}...")
+                print(f"   {i + 1}. Pool ID: {pool['pool_id'][:10]}...")
                 print(f"      {pool['trusted_tokens']}")
                 print(f"      Fee: {pool['fee']} bps")
 
@@ -256,17 +265,23 @@ async def main():
         import json
 
         if v2_pools:
-            with open('/home/sam-sullivan/dynamicWhitelist/data/v2_trusted_pools.json', 'w') as f:
+            with open(
+                "/home/sam-sullivan/dynamicWhitelist/data/v2_trusted_pools.json", "w"
+            ) as f:
                 json.dump(v2_pools, f, indent=2, default=str)
             print(f"\n💾 Saved V2 pools to data/v2_trusted_pools.json")
 
         if v3_pools:
-            with open('/home/sam-sullivan/dynamicWhitelist/data/v3_trusted_pools.json', 'w') as f:
+            with open(
+                "/home/sam-sullivan/dynamicWhitelist/data/v3_trusted_pools.json", "w"
+            ) as f:
                 json.dump(v3_pools, f, indent=2, default=str)
             print(f"💾 Saved V3 pools to data/v3_trusted_pools.json")
 
         if v4_pools:
-            with open('/home/sam-sullivan/dynamicWhitelist/data/v4_trusted_pools.json', 'w') as f:
+            with open(
+                "/home/sam-sullivan/dynamicWhitelist/data/v4_trusted_pools.json", "w"
+            ) as f:
                 json.dump(v4_pools, f, indent=2, default=str)
             print(f"💾 Saved V4 pools to data/v4_trusted_pools.json")
 

@@ -5,16 +5,18 @@ This module tests the UniswapV2ReservesBatcher with real blockchain calls
 using actual pair addresses to verify functionality works end-to-end.
 """
 
-import pytest
 import logging
+
+import pytest
 from web3 import Web3
 
 # Set logging level for this module to see detailed output
 logging.getLogger().setLevel(logging.INFO)
 
 from src.config import ConfigManager
-from ..uniswap_v2_reserves import UniswapV2ReservesBatcher, fetch_uniswap_v2_reserves
+
 from ..base import BatchConfig
+from ..uniswap_v2_reserves import UniswapV2ReservesBatcher, fetch_uniswap_v2_reserves
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +27,8 @@ def web3_connection():
     try:
         config_manager = ConfigManager()
         # Get Ethereum chain config
-        chain_config = config_manager.chains.get_chain_config('ethereum')
-        rpc_url = chain_config['rpc_url']
+        chain_config = config_manager.chains.get_chain_config("ethereum")
+        rpc_url = chain_config["rpc_url"]
 
         logger.info(f"Connecting to: {rpc_url}")
         web3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -50,13 +52,12 @@ def test_pairs():
         "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",  # ETH/USDT
         "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",  # ETH/DAI
         "0xbb2b8038a1640196fbe3e38816f3e67cba72d940",  # WBTC/ETH
-        "0xd3d2e2692501a5c9ca623199d38826e513033a17"   # UNI/ETH
+        "0xd3d2e2692501a5c9ca623199d38826e513033a17",  # UNI/ETH
     ]
 
 
 class TestLiveReserves:
     """Live test class for Uniswap V2 reserves batch fetcher."""
-
 
     @pytest.mark.asyncio
     async def test_single_pair(self, web3_connection, test_pairs):
@@ -76,11 +77,11 @@ class TestLiveReserves:
 
         # Verify reserve data format
         for pair, data in result.data.items():
-            assert 'reserve0' in data, "Missing reserve0"
-            assert 'reserve1' in data, "Missing reserve1"
+            assert "reserve0" in data, "Missing reserve0"
+            assert "reserve1" in data, "Missing reserve1"
 
-            reserve0 = int(data['reserve0'], 16)
-            reserve1 = int(data['reserve1'], 16)
+            reserve0 = int(data["reserve0"], 16)
+            reserve1 = int(data["reserve1"], 16)
 
             assert reserve0 >= 0, "Invalid reserve0"
             assert reserve1 >= 0, "Invalid reserve1"
@@ -107,11 +108,11 @@ class TestLiveReserves:
 
         # Verify all pairs have valid reserve data
         for pair, data in result.data.items():
-            assert 'reserve0' in data, f"Missing reserve0 for pair {pair}"
-            assert 'reserve1' in data, f"Missing reserve1 for pair {pair}"
+            assert "reserve0" in data, f"Missing reserve0 for pair {pair}"
+            assert "reserve1" in data, f"Missing reserve1 for pair {pair}"
 
-            reserve0 = int(data['reserve0'], 16)
-            reserve1 = int(data['reserve1'], 16)
+            reserve0 = int(data["reserve0"], 16)
+            reserve1 = int(data["reserve1"], 16)
 
             assert reserve0 >= 0, f"Invalid reserve0 for pair {pair}"
             assert reserve1 >= 0, f"Invalid reserve1 for pair {pair}"
@@ -132,24 +133,28 @@ class TestLiveReserves:
 
         # Assertions
         assert reserves, "No data returned from chunked fetch"
-        assert len(reserves) == len(test_pairs), f"Expected {len(test_pairs)} pairs, got {len(reserves)}"
+        assert len(reserves) == len(test_pairs), (
+            f"Expected {len(test_pairs)} pairs, got {len(reserves)}"
+        )
 
         # Verify all pairs have valid reserve data
         for pair, data in reserves.items():
-            assert 'reserve0' in data, f"Missing reserve0 for pair {pair}"
-            assert 'reserve1' in data, f"Missing reserve1 for pair {pair}"
+            assert "reserve0" in data, f"Missing reserve0 for pair {pair}"
+            assert "reserve1" in data, f"Missing reserve1 for pair {pair}"
 
-            reserve0 = int(data['reserve0'], 16)
-            reserve1 = int(data['reserve1'], 16)
+            reserve0 = int(data["reserve0"], 16)
+            reserve1 = int(data["reserve1"], 16)
 
             assert reserve0 >= 0, f"Invalid reserve0 for pair {pair}"
             assert reserve1 >= 0, f"Invalid reserve1 for pair {pair}"
 
         # Calculate totals for logging
-        total_reserve0 = sum(int(data['reserve0'], 16) for data in reserves.values())
-        total_reserve1 = sum(int(data['reserve1'], 16) for data in reserves.values())
+        total_reserve0 = sum(int(data["reserve0"], 16) for data in reserves.values())
+        total_reserve1 = sum(int(data["reserve1"], 16) for data in reserves.values())
 
-        logger.info(f"✅ Chunked fetch: {len(reserves)} pairs in {expected_chunks} chunks")
+        logger.info(
+            f"✅ Chunked fetch: {len(reserves)} pairs in {expected_chunks} chunks"
+        )
         logger.info(f"   Total reserves: R0={total_reserve0:,}, R1={total_reserve1:,}")
 
     @pytest.mark.asyncio
@@ -158,9 +163,7 @@ class TestLiveReserves:
         # Test convenience function
         test_pair_list = test_pairs[:3]
         reserves = await fetch_uniswap_v2_reserves(
-            web3_connection,
-            test_pair_list,
-            batch_size=10
+            web3_connection, test_pair_list, batch_size=10
         )
 
         # Assertions
@@ -169,11 +172,11 @@ class TestLiveReserves:
 
         # Verify all pairs have valid reserve data
         for pair, data in reserves.items():
-            assert 'reserve0' in data, f"Missing reserve0 for pair {pair}"
-            assert 'reserve1' in data, f"Missing reserve1 for pair {pair}"
+            assert "reserve0" in data, f"Missing reserve0 for pair {pair}"
+            assert "reserve1" in data, f"Missing reserve1 for pair {pair}"
 
-            reserve0 = int(data['reserve0'], 16)
-            reserve1 = int(data['reserve1'], 16)
+            reserve0 = int(data["reserve0"], 16)
+            reserve1 = int(data["reserve1"], 16)
 
             assert reserve0 >= 0, f"Invalid reserve0 for pair {pair}"
             assert reserve1 >= 0, f"Invalid reserve1 for pair {pair}"
@@ -188,9 +191,9 @@ class TestLiveReserves:
         # Mix valid and invalid addresses
         mixed_addresses = [
             test_pairs[0],  # Valid
-            "0xinvalid",    # Invalid
-            "",             # Empty
-            test_pairs[1]   # Valid
+            "0xinvalid",  # Invalid
+            "",  # Empty
+            test_pairs[1],  # Valid
         ]
 
         result = await batcher.batch_call(mixed_addresses)
@@ -199,17 +202,23 @@ class TestLiveReserves:
         if result.success:
             # Should process only the valid addresses
             expected_valid = 2
-            assert len(result.data) == expected_valid, f"Expected {expected_valid} valid addresses, got {len(result.data)}"
+            assert len(result.data) == expected_valid, (
+                f"Expected {expected_valid} valid addresses, got {len(result.data)}"
+            )
 
             # Verify valid addresses have correct data
             for pair, data in result.data.items():
-                assert 'reserve0' in data, f"Missing reserve0 for pair {pair}"
-                assert 'reserve1' in data, f"Missing reserve1 for pair {pair}"
+                assert "reserve0" in data, f"Missing reserve0 for pair {pair}"
+                assert "reserve1" in data, f"Missing reserve1 for pair {pair}"
 
-            logger.info(f"✅ Filtered invalid addresses: {len(result.data)} valid out of {len(mixed_addresses)} total")
+            logger.info(
+                f"✅ Filtered invalid addresses: {len(result.data)} valid out of {len(mixed_addresses)} total"
+            )
         else:
             # Should fail gracefully with appropriate error
-            assert "No valid addresses" in result.error, f"Unexpected error: {result.error}"
+            assert "No valid addresses" in result.error, (
+                f"Unexpected error: {result.error}"
+            )
             logger.info("✅ Correctly rejected invalid addresses")
 
     @pytest.mark.asyncio
@@ -225,5 +234,6 @@ class TestLiveReserves:
         assert result.data == {}, "Should return empty data"
 
         logger.info("✅ Correctly handled empty address list")
+
 
 # Run with: uv run pytest src/batchers/tests/test_live_reserves.py -v

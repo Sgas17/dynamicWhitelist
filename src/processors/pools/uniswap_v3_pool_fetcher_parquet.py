@@ -10,13 +10,13 @@ import polars
 import ujson
 from eth_utils.address import to_checksum_address
 from hexbytes import HexBytes
-from src.core.storage.postgres_pools import (
-    store_pools_to_database,
-    check_uniswap_database_results
-)
 
 # Import config system
 from src.config.manager import ConfigManager
+from src.core.storage.postgres_pools import (
+    check_uniswap_database_results,
+    store_pools_to_database,
+)
 
 # Initialize config
 config = ConfigManager()
@@ -58,12 +58,14 @@ last_event_block = poolcreated_events.select(polars.col("block_number")).max().i
 
 _pool_manager_addresses = [HexBytes(address) for address in FACTORY_ADDRESSES]
 
+
 def to_serializable(val):
     if val is None:
         return None
     if isinstance(val, (bytes, HexBytes)):
-        return '0x' + val.hex()
+        return "0x" + val.hex()
     return str(val)
+
 
 for event in poolcreated_events.rows(named=True):
     factory_address = event["address"]
@@ -112,7 +114,9 @@ lp_data.append({"block_number": last_event_block, "number_of_pools": len(lp_data
 # Store pools to database
 print("Storing pools to database...")
 # Filter out the metadata entry (last item) before storing to database
-pool_data_for_db = [pool for pool in lp_data if isinstance(pool, dict) and 'address' in pool]
+pool_data_for_db = [
+    pool for pool in lp_data if isinstance(pool, dict) and "address" in pool
+]
 
 # Deduplicate by pool address to avoid PostgreSQL conflict errors
 seen_addresses = set()
@@ -120,7 +124,7 @@ deduplicated_pools = []
 duplicates_count = 0
 
 for pool in pool_data_for_db:
-    address = pool['address']
+    address = pool["address"]
     if address not in seen_addresses:
         seen_addresses.add(address)
         deduplicated_pools.append(pool)
@@ -128,14 +132,18 @@ for pool in pool_data_for_db:
         duplicates_count += 1
 
 if duplicates_count > 0:
-    print(f"Warning: Found {duplicates_count} duplicate pool addresses, removing duplicates")
+    print(
+        f"Warning: Found {duplicates_count} duplicate pool addresses, removing duplicates"
+    )
     print(f"This might indicate:")
     print(f"  - Duplicate events in your parquet files")
     print(f"  - Same pool created by multiple factories (shouldn't happen)")
     print(f"  - Data corruption or processing issues")
     print(f"Storing {len(deduplicated_pools)} unique pools to database...")
 else:
-    print(f"No duplicates found. Storing {len(deduplicated_pools)} pools to database...")
+    print(
+        f"No duplicates found. Storing {len(deduplicated_pools)} pools to database..."
+    )
 
 store_pools_to_database(deduplicated_pools)
 
@@ -144,6 +152,7 @@ check_uniswap_database_results(LP_TYPE)
 
 # Before dumping to JSON, ensure all values are serializable
 import copy
+
 serializable_lp_data = []
 for entry in lp_data:
     if isinstance(entry, dict):

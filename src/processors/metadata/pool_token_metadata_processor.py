@@ -9,20 +9,19 @@ Borrows proven patterns from scrape_new_token_metadata.py but adapted for:
 """
 
 import asyncio
+import json
 import logging
 import time
-import json
-from pathlib import Path
-from typing import Dict, List, Set, Optional, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 
-from web3 import Web3
 from eth_abi.abi import encode
 from sqlalchemy import create_engine, text
+from web3 import Web3
 
 from src.config.manager import ConfigManager
 from src.processors.base import BaseProcessor, ProcessorResult
-
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TokenProcessingStats:
     """Track processing statistics."""
+
     total_tokens: int = 0
     processed: int = 0
     successful: int = 0
@@ -42,7 +42,9 @@ class TokenProcessingStats:
 
     @property
     def progress_percent(self) -> float:
-        return (self.processed / self.total_tokens * 100) if self.total_tokens > 0 else 0.0
+        return (
+            (self.processed / self.total_tokens * 100) if self.total_tokens > 0 else 0.0
+        )
 
 
 class PoolTokenMetadataProcessor(BaseProcessor):
@@ -69,6 +71,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
         # Database connection (using same pattern as existing scraper)
         # Use environment variables like the original scraper
         import os
+
         self.db_uri = f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', 5432)}/{os.getenv('POSTGRES_DB', 'whitelist')}"
         self.engine = create_engine(self.db_uri)
 
@@ -105,7 +108,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
         start_index: int = 0,
         max_tokens: Optional[int] = None,
         save_progress_every: int = 10,  # Save progress every N batches
-        **kwargs
+        **kwargs,
     ) -> ProcessorResult:
         """
         Process missing token metadata using proven patterns.
@@ -126,7 +129,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                 return ProcessorResult(
                     success=True,
                     processed_count=0,
-                    metadata={"message": "No tokens to process"}
+                    metadata={"message": "No tokens to process"},
                 )
 
             # Apply start index and limits
@@ -140,18 +143,22 @@ class PoolTokenMetadataProcessor(BaseProcessor):
 
             # Initialize stats
             self.stats.total_tokens = len(missing_tokens)
-            logger.info(f"Processing {self.stats.total_tokens:,} tokens in batches of {batch_size}")
+            logger.info(
+                f"Processing {self.stats.total_tokens:,} tokens in batches of {batch_size}"
+            )
 
             # Setup database tables (borrowed pattern)
             self._setup_database_tables()
 
             # Process in batches
             for i in range(0, len(missing_tokens), batch_size):
-                batch = missing_tokens[i:i + batch_size]
+                batch = missing_tokens[i : i + batch_size]
                 batch_num = self.stats.batches_completed + 1
                 total_batches = (len(missing_tokens) + batch_size - 1) // batch_size
 
-                logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} tokens)")
+                logger.info(
+                    f"Processing batch {batch_num}/{total_batches} ({len(batch)} tokens)"
+                )
 
                 # Process batch using on-chain calls (borrowed pattern)
                 batch_success = await self._process_token_batch(batch)
@@ -159,7 +166,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                 # Update stats
                 self.stats.processed += len(batch)
                 self.stats.successful += batch_success
-                self.stats.failed += (len(batch) - batch_success)
+                self.stats.failed += len(batch) - batch_success
                 self.stats.batches_completed += 1
 
                 # Log progress
@@ -173,7 +180,9 @@ class PoolTokenMetadataProcessor(BaseProcessor):
 
                 # Save progress periodically
                 if batch_num % save_progress_every == 0:
-                    await self._save_progress_checkpoint(start_index + self.stats.processed)
+                    await self._save_progress_checkpoint(
+                        start_index + self.stats.processed
+                    )
 
                 # Respectful delay between batches (borrowed pattern)
                 await asyncio.sleep(3)
@@ -190,7 +199,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                 "failed": self.stats.failed,
                 "success_rate": self.stats.success_rate,
                 "batches_completed": self.stats.batches_completed,
-                "start_index": start_index
+                "start_index": start_index,
             }
 
             logger.info(f"Processing complete: {metadata}")
@@ -199,7 +208,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                 success=True,
                 data=self.new_token_data,
                 processed_count=self.stats.successful,
-                metadata=metadata
+                metadata=metadata,
             )
 
         except Exception as e:
@@ -210,13 +219,16 @@ class PoolTokenMetadataProcessor(BaseProcessor):
     def _load_missing_tokens(self, token_file: str) -> List[str]:
         """Load missing tokens from file."""
         try:
-            with open(token_file, 'r') as f:
+            with open(token_file, "r") as f:
                 tokens = [line.strip().lower() for line in f if line.strip()]
 
             # Filter valid addresses (borrowed validation pattern)
             valid_tokens = []
             for token in tokens:
-                if self.web3.is_address(token) and token != "0x0000000000000000000000000000000000000000":
+                if (
+                    self.web3.is_address(token)
+                    and token != "0x0000000000000000000000000000000000000000"
+                ):
                     valid_tokens.append(token)
 
             logger.info(f"Loaded {len(valid_tokens):,} valid tokens from {token_file}")
@@ -295,7 +307,9 @@ class PoolTokenMetadataProcessor(BaseProcessor):
     async def _try_batch_processing(self, token_addresses: List[str]) -> int:
         """Try batch processing first (borrowed pattern)."""
         # Load BatchTokenInfo bytecode (borrowed pattern)
-        batch_token_info_path = Path.home() / "dynamic_whitelist" / "data" / "BatchTokenInfo.json"
+        batch_token_info_path = (
+            Path.home() / "dynamic_whitelist" / "data" / "BatchTokenInfo.json"
+        )
 
         if not batch_token_info_path.exists():
             logger.error("BatchTokenInfo.json not found")
@@ -321,7 +335,9 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                 name_bytes = encoded_return_data[start_idx : start_idx + 32]
                 symbol_bytes = encoded_return_data[start_idx + 32 : start_idx + 64]
                 decimals_bytes = encoded_return_data[start_idx + 64 : start_idx + 96]
-                total_supply_bytes = encoded_return_data[start_idx + 96 : start_idx + 128]
+                total_supply_bytes = encoded_return_data[
+                    start_idx + 96 : start_idx + 128
+                ]
 
                 # Decode token info (borrowed pattern)
                 token_info = {}
@@ -331,15 +347,27 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                     token_info["name"] = "Unknown Token"
 
                 try:
-                    token_info["symbol"] = symbol_bytes.split(b"\x00")[0].decode("utf-8")
+                    token_info["symbol"] = symbol_bytes.split(b"\x00")[0].decode(
+                        "utf-8"
+                    )
                 except (UnicodeDecodeError, IndexError):
                     token_info["symbol"] = "UNK"
 
-                token_info["decimals"] = int(decimals_bytes[-1]) if decimals_bytes else 0
-                token_info["total_supply"] = int.from_bytes(total_supply_bytes, "big") if total_supply_bytes else 0
+                token_info["decimals"] = (
+                    int(decimals_bytes[-1]) if decimals_bytes else 0
+                )
+                token_info["total_supply"] = (
+                    int.from_bytes(total_supply_bytes, "big")
+                    if total_supply_bytes
+                    else 0
+                )
 
                 # Skip tokens with no valid data
-                if not token_info["name"] or not token_info["symbol"] or token_info["symbol"] == "UNK":
+                if (
+                    not token_info["name"]
+                    or not token_info["symbol"]
+                    or token_info["symbol"] == "UNK"
+                ):
                     continue
 
                 # Format for insertion (borrowed pattern)
@@ -348,9 +376,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                     "symbol": token_info["symbol"].upper(),
                     "decimals": token_info["decimals"],
                     "total_supply": str(token_info["total_supply"]),
-                    "platforms": {
-                        "ethereum": address.lower()
-                    }
+                    "platforms": {"ethereum": address.lower()},
                 }
 
                 self.new_token_data.append(token_data)
@@ -379,9 +405,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                 "symbol": symbol.upper(),
                 "decimals": decimals or 18,  # Default to 18 if not available
                 "total_supply": "0",  # Skip total supply for individual calls
-                "platforms": {
-                    "ethereum": address.lower()
-                }
+                "platforms": {"ethereum": address.lower()},
             }
 
             self.new_token_data.append(token_data)
@@ -391,7 +415,9 @@ class PoolTokenMetadataProcessor(BaseProcessor):
             logger.debug(f"Individual token processing failed for {address}: {e}")
             return False
 
-    async def _call_token_function(self, address: str, function_signature: str) -> Optional[str]:
+    async def _call_token_function(
+        self, address: str, function_signature: str
+    ) -> Optional[str]:
         """Make individual contract function calls."""
         try:
             from web3 import Web3
@@ -405,10 +431,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
             else:
                 return None
 
-            result = self.web3.eth.call({
-                "to": address,
-                "data": function_selector
-            })
+            result = self.web3.eth.call({"to": address, "data": function_selector})
 
             if function_signature == "decimals()":
                 return int.from_bytes(result, "big") if result else 18
@@ -417,13 +440,15 @@ class PoolTokenMetadataProcessor(BaseProcessor):
             if len(result) >= 64:
                 # Skip the first 32 bytes (offset) and next 32 bytes (length)
                 length = int.from_bytes(result[32:64], "big")
-                string_data = result[64:64+length]
+                string_data = result[64 : 64 + length]
                 return string_data.decode("utf-8").strip()
 
             return None
 
         except Exception as e:
-            logger.debug(f"Function call {function_signature} failed for {address}: {e}")
+            logger.debug(
+                f"Function call {function_signature} failed for {address}: {e}"
+            )
             return None
 
     def _insert_token_data(self):
@@ -456,7 +481,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                                 "symbol": token.get("symbol", "UNK"),
                                 "decimals": token.get("decimals", 0),
                                 "name": token.get("name", "Unknown Token"),
-                            }
+                            },
                         )
 
                         # Insert into platforms table (borrowed pattern)
@@ -485,7 +510,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                                 "decimals": token.get("decimals", 0),
                                 "platform": platform,
                                 "total_supply": total_supply,
-                            }
+                            },
                         )
 
                 conn.commit()
@@ -505,8 +530,8 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                     "processed": self.stats.processed,
                     "successful": self.stats.successful,
                     "failed": self.stats.failed,
-                    "success_rate": self.stats.success_rate
-                }
+                    "success_rate": self.stats.success_rate,
+                },
             }
 
             with open("/tmp/claude/token_processing_checkpoint.json", "w") as f:
@@ -527,7 +552,7 @@ class PoolTokenMetadataProcessor(BaseProcessor):
                 "failed": self.stats.failed,
                 "success_rate": self.stats.success_rate,
                 "batches_completed": self.stats.batches_completed,
-                "token_data_count": len(self.new_token_data)
+                "token_data_count": len(self.new_token_data),
             }
 
             with open("/tmp/claude/pool_token_processing_results.json", "w") as f:
@@ -544,7 +569,7 @@ async def process_pool_token_metadata(
     chain: str = "ethereum",
     batch_size: int = 50,
     start_index: int = 0,
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = None,
 ) -> ProcessorResult:
     """
     Convenience function to process pool token metadata.
@@ -557,7 +582,5 @@ async def process_pool_token_metadata(
     """
     processor = PoolTokenMetadataProcessor(chain)
     return await processor.process(
-        batch_size=batch_size,
-        start_index=start_index,
-        max_tokens=max_tokens
+        batch_size=batch_size, start_index=start_index, max_tokens=max_tokens
     )

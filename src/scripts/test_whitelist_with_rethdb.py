@@ -27,29 +27,28 @@ from src.core.storage.postgres import PostgresStorage
 from src.whitelist.orchestrator import WhitelistOrchestrator
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 async def main():
     """Test whitelist creation with timing."""
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info("WHITELIST CREATION TEST - RETH DB INTEGRATION")
-    logger.info("="*80)
+    logger.info("=" * 80)
 
     # Initialize config and storage
     config = ConfigManager()
 
     db_config = {
-        'host': config.database.POSTGRES_HOST,
-        'port': config.database.POSTGRES_PORT,
-        'user': config.database.POSTGRES_USER,
-        'password': config.database.POSTGRES_PASSWORD,
-        'database': config.database.POSTGRES_DB,
-        'pool_size': 10,
-        'pool_timeout': 10
+        "host": config.database.POSTGRES_HOST,
+        "port": config.database.POSTGRES_PORT,
+        "user": config.database.POSTGRES_USER,
+        "password": config.database.POSTGRES_PASSWORD,
+        "database": config.database.POSTGRES_DB,
+        "pool_size": 10,
+        "pool_timeout": 10,
     }
 
     storage = PostgresStorage(config=db_config)
@@ -67,25 +66,33 @@ async def main():
             chain="ethereum",
             top_transfers=100,
             protocols=["uniswap_v2", "uniswap_v3", "uniswap_v4"],
-            save_snapshots_to_db=True  # Save snapshots for verification
+            save_snapshots_to_db=True,  # Save snapshots for verification
         )
 
         overall_elapsed = time.time() - overall_start
 
         # Print timing summary
-        logger.info("\n" + "="*80)
+        logger.info("\n" + "=" * 80)
         logger.info("⏱️  TIMING SUMMARY")
-        logger.info("="*80)
-        logger.info(f"Total pipeline time: {overall_elapsed:.2f}s ({overall_elapsed/60:.2f} minutes)")
+        logger.info("=" * 80)
+        logger.info(
+            f"Total pipeline time: {overall_elapsed:.2f}s ({overall_elapsed / 60:.2f} minutes)"
+        )
         logger.info(f"")
         logger.info(f"Results:")
         logger.info(f"  Tokens whitelisted: {results['whitelist']['total_tokens']}")
         logger.info(f"  Stage 1 pools: {results['stage1_pools']['count']}")
 
         # Count pools by protocol
-        v2_count = sum(1 for p in results['stage1_pools']['pools'] if p['protocol'] == 'v2')
-        v3_count = sum(1 for p in results['stage1_pools']['pools'] if p['protocol'] == 'v3')
-        v4_count = sum(1 for p in results['stage1_pools']['pools'] if p['protocol'] == 'v4')
+        v2_count = sum(
+            1 for p in results["stage1_pools"]["pools"] if p["protocol"] == "v2"
+        )
+        v3_count = sum(
+            1 for p in results["stage1_pools"]["pools"] if p["protocol"] == "v3"
+        )
+        v4_count = sum(
+            1 for p in results["stage1_pools"]["pools"] if p["protocol"] == "v4"
+        )
 
         logger.info(f"    V2 pools: {v2_count}")
         logger.info(f"    V3 pools: {v3_count}")
@@ -98,7 +105,7 @@ async def main():
         logger.info(f"  V2: ${config.chains.MIN_LIQUIDITY_V2:,.0f}")
         logger.info(f"  V3: ${config.chains.MIN_LIQUIDITY_V3:,.0f}")
         logger.info(f"  V4: ${config.chains.MIN_LIQUIDITY_V4:,.0f}")
-        logger.info("="*80)
+        logger.info("=" * 80)
 
         return 0
 

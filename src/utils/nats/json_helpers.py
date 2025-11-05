@@ -1,5 +1,5 @@
 import json
-from typing import Any, TypeVar, Optional, Type
+from typing import Any, Optional, Type, TypeVar
 
 T = TypeVar("T")
 
@@ -7,11 +7,11 @@ T = TypeVar("T")
 def dumps(msg: Any, cls: Optional[Type[T]] = None) -> str:
     """
     Serialize a message to JSON string.
-    
+
     Args:
         msg: The message to serialize
         cls: Optional custom serializer class
-        
+
     Returns:
         JSON string representation of the message
     """
@@ -22,11 +22,11 @@ def dumps(msg: Any, cls: Optional[Type[T]] = None) -> str:
 def loads(data: str, cls: Optional[Type[T]] = None) -> Any:
     """
     Deserialize a JSON string to Python object.
-    
+
     Args:
         data: JSON string to deserialize
         cls: Optional custom deserializer class
-        
+
     Returns:
         Python object from JSON string
     """

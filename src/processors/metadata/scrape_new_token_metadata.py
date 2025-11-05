@@ -1,17 +1,17 @@
-import requests
 import json
+import logging
 import os
 import sys
-import dotenv
-from sqlalchemy import create_engine, text
 import time
-from typing import Dict, List, Set, Optional, Any
-import logging
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 
-from web3 import Web3
-from eth_abi.abi import encode, decode
+import dotenv
+import requests
+from eth_abi.abi import decode, encode
 from eth_utils.address import to_checksum_address
+from sqlalchemy import create_engine, text
+from web3 import Web3
 
 # Load environment variables
 dotenv.load_dotenv()
@@ -38,7 +38,13 @@ class CoinGeckoTokenComparator:
     def load_ethereum_tokens(self) -> Set[str]:
         """Load ethereum unique tokens from JSON file"""
         try:
-            with open(Path.home() / "dynamic_whitelist" / "data" / "ethereum_unique_tokens.json", "r") as f:
+            with open(
+                Path.home()
+                / "dynamic_whitelist"
+                / "data"
+                / "ethereum_unique_tokens.json",
+                "r",
+            ) as f:
                 tokens = json.load(f)
                 tokens.pop(-1)
             logger.info(f"Loaded {len(tokens)} Ethereum tokens")
@@ -78,7 +84,6 @@ class CoinGeckoTokenComparator:
             logger.error(f"Error loading CoinGecko tokens from DB: {e}")
             return set()
 
-
     def load_missing_jared_tokens_from_db(self, platform: str = "ethereum"):
         """Load missing tokens from database"""
         platform_table_name = f"missing_coingecko_tokens_{platform}"
@@ -93,10 +98,14 @@ class CoinGeckoTokenComparator:
                 missing_tokens = set()
                 for row in result.mappings():
                     missing_tokens.add(row["address"].lower())
-                logger.info(f"Loaded {len(missing_tokens)} missing tokens from {platform_table_name}")
+                logger.info(
+                    f"Loaded {len(missing_tokens)} missing tokens from {platform_table_name}"
+                )
                 return missing_tokens
         except Exception as e:
-            logger.warning(f"Could not load missing tokens from DB (table may not exist yet): {e}")
+            logger.warning(
+                f"Could not load missing tokens from DB (table may not exist yet): {e}"
+            )
             return set()
 
     def find_missing_tokens(self, platform: str = "ethereum"):
@@ -110,10 +119,10 @@ class CoinGeckoTokenComparator:
 
     def create_missing_tokens_table(self, platform: str = "ethereum"):
         """Create missing tokens tables matching existing database schema"""
-        
+
         # Create platforms table (matching coingecko_token_platforms)
         platforms_table_name = "missing_coingecko_tokens_platforms"
-        
+
         # Create platform-specific metadata table (matching network_1_erc20_metadata)
         platform_table_name = f"missing_coingecko_tokens_{platform}"
 
@@ -129,7 +138,7 @@ class CoinGeckoTokenComparator:
         );
         """
 
-        # Create platform-specific table SQL - matches network_1_erc20_metadata structure  
+        # Create platform-specific table SQL - matches network_1_erc20_metadata structure
         create_platform_sql = f"""
         CREATE TABLE IF NOT EXISTS {platform_table_name} (
             address VARCHAR(42) PRIMARY KEY,
@@ -144,17 +153,17 @@ class CoinGeckoTokenComparator:
                 # Create platforms table
                 conn.execute(text(create_platforms_sql))
                 logger.info(f"Created/verified platforms table: {platforms_table_name}")
-                
+
                 # Create platform-specific metadata table
                 conn.execute(text(create_platform_sql))
                 logger.info(f"Created/verified platform table: {platform_table_name}")
 
                 # Check and migrate existing tables if needed
                 self._migrate_table_schema_if_needed(conn, platforms_table_name)
-                
+
                 conn.commit()
                 logger.info("Missing tokens tables setup completed successfully")
-                
+
         except Exception as e:
             logger.error(f"Error creating/updating tables: {e}")
             raise
@@ -169,9 +178,11 @@ class CoinGeckoTokenComparator:
             WHERE table_name = :table_name 
             AND column_name = 'total_supply'
             """
-            result = conn.execute(text(check_column_sql), {'table_name': table_name}).fetchone()
-            
-            if result and result[1] != 'numeric':
+            result = conn.execute(
+                text(check_column_sql), {"table_name": table_name}
+            ).fetchone()
+
+            if result and result[1] != "numeric":
                 # Column exists but wrong type, alter it
                 logger.info(f"Migrating total_supply column type in {table_name}")
                 alter_sql = f"""
@@ -179,11 +190,9 @@ class CoinGeckoTokenComparator:
                 ALTER COLUMN total_supply TYPE NUMERIC(78, 0) USING total_supply::NUMERIC(78, 0)
                 """
                 conn.execute(text(alter_sql))
-                
+
         except Exception as e:
             logger.warning(f"Schema migration warning for {table_name}: {e}")
-            
-
 
     def get_token_info_by_address(self, address: str) -> Optional[Dict[str, Any]]:
         """Get token information from CoinGecko API by contract address"""
@@ -390,7 +399,9 @@ class CoinGeckoTokenComparator:
     ) -> Optional[List[Dict[str, Any]]]:
         """Get token information from contract"""
         try:
-            with open(Path.home() / "dynamic_whitelist" / "data" / "BatchTokenInfo.json", "r") as f:
+            with open(
+                Path.home() / "dynamic_whitelist" / "data" / "BatchTokenInfo.json", "r"
+            ) as f:
                 batch_token_info = json.load(f)
                 contract_bytecode = batch_token_info["bytecode"]["object"]
 
@@ -405,36 +416,52 @@ class CoinGeckoTokenComparator:
                     start_idx = i * 128
                     name_bytes = encoded_return_data[start_idx : start_idx + 32]
                     symbol_bytes = encoded_return_data[start_idx + 32 : start_idx + 64]
-                    decimals_bytes = encoded_return_data[start_idx + 64 : start_idx + 96]
-                    total_supply_bytes = encoded_return_data[start_idx + 96 : start_idx + 128]
+                    decimals_bytes = encoded_return_data[
+                        start_idx + 64 : start_idx + 96
+                    ]
+                    total_supply_bytes = encoded_return_data[
+                        start_idx + 96 : start_idx + 128
+                    ]
 
                     token_info = {}
                     # Remove null bytes from strings and handle decode errors
                     try:
-                        token_info["name"] = name_bytes.split(b"\x00")[0].decode("utf-8")
+                        token_info["name"] = name_bytes.split(b"\x00")[0].decode(
+                            "utf-8"
+                        )
                     except (UnicodeDecodeError, IndexError):
                         token_info["name"] = "Unknown Token"
-                    
+
                     try:
-                        token_info["symbol"] = symbol_bytes.split(b"\x00")[0].decode("utf-8")
+                        token_info["symbol"] = symbol_bytes.split(b"\x00")[0].decode(
+                            "utf-8"
+                        )
                     except (UnicodeDecodeError, IndexError):
                         token_info["symbol"] = "UNK"
-                    
+
                     # Decimals is a uint8 in the last byte
-                    token_info["decimals"] = int(decimals_bytes[-1]) if decimals_bytes else None
+                    token_info["decimals"] = (
+                        int(decimals_bytes[-1]) if decimals_bytes else None
+                    )
                     # Total supply is a uint256
-                    token_info["total_supply"] = int.from_bytes(total_supply_bytes, "big") if total_supply_bytes else 0
+                    token_info["total_supply"] = (
+                        int.from_bytes(total_supply_bytes, "big")
+                        if total_supply_bytes
+                        else 0
+                    )
 
                     tokens_metadata.append(token_info)
                 except Exception as e:
                     logger.warning(f"Error processing token {addresses[i]}: {e}")
                     # Add default token info for failed tokens
-                    tokens_metadata.append({
-                        "name": "Unknown Token",
-                        "symbol": "UNK",
-                        "decimals": 0,
-                        "total_supply": 0
-                    })
+                    tokens_metadata.append(
+                        {
+                            "name": "Unknown Token",
+                            "symbol": "UNK",
+                            "decimals": 0,
+                            "total_supply": 0,
+                        }
+                    )
 
             return tokens_metadata
         except Exception as e:
@@ -483,7 +510,6 @@ class CoinGeckoTokenComparator:
 
     def process_missing_tokens(self, missing_tokens: Set[str]):
         """Process missing tokens"""
-        
 
     def run_full_process(
         self,
@@ -503,20 +529,18 @@ class CoinGeckoTokenComparator:
         # Step 2: Create database tables
         self.create_missing_tokens_table()
 
-       
-        
         tokens_to_process = list(missing_tokens)
         if scrape_limit:
             tokens_to_process = tokens_to_process[:scrape_limit]
         for i in range(0, len(tokens_to_process), 50):
-            batch = tokens_to_process[i:i+50]
+            batch = tokens_to_process[i : i + 50]
             tokens_metadata = self.get_token_info_from_blockchain(batch)
             if tokens_metadata:
                 for j, metadata in enumerate(tokens_metadata):
                     address = batch[j].lower()
-                    if not metadata['name'] or not metadata['symbol']:
+                    if not metadata["name"] or not metadata["symbol"]:
                         continue
-                    
+
                     token_data = {
                         "name": metadata["name"],
                         "symbol": metadata["symbol"].lower(),
@@ -528,9 +552,7 @@ class CoinGeckoTokenComparator:
                     }
                     self.new_token_data.append(token_data)
             time.sleep(3)
-            logger.info(f"Processed {i}:{i+50} of {len(tokens_to_process)} tokens")
-
-        
+            logger.info(f"Processed {i}:{i + 50} of {len(tokens_to_process)} tokens")
 
         # Step 5: Insert all collected data into database
         if self.new_token_data:
@@ -559,6 +581,7 @@ def main():
     except Exception as e:
         logger.error(f"Error in main process: {e}")
         raise
+
 
 if __name__ == "__main__":
     comparator = CoinGeckoTokenComparator()

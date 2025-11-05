@@ -7,14 +7,15 @@ Tests just the V3 filtering functionality without full whitelist building.
 
 import asyncio
 import sys
-from pathlib import Path
 from decimal import Decimal
+from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from web3 import Web3
+
 from src.config import ConfigManager
 from src.whitelist.liquidity_filter import PoolLiquidityFilter
 
@@ -31,9 +32,7 @@ async def test_v3_filtering():
 
     # Create filter instance
     filter_instance = PoolLiquidityFilter(
-        web3=web3,
-        min_liquidity_usd=10000,
-        chain="ethereum"
+        web3=web3, min_liquidity_usd=10000, chain="ethereum"
     )
 
     # Create mock V3 pool data
@@ -44,41 +43,26 @@ async def test_v3_filtering():
 
     mock_pools = {
         pool_addr: {
-            'token0': {
-                'address': usdc_addr,
-                'symbol': 'USDC',
-                'decimals': 6
-            },
-            'token1': {
-                'address': weth_addr,
-                'symbol': 'WETH',
-                'decimals': 18
-            },
-            'exchange': 'uniswap_v3',
-            'fee': 500,
-            'tickSpacing': 10
+            "token0": {"address": usdc_addr, "symbol": "USDC", "decimals": 6},
+            "token1": {"address": weth_addr, "symbol": "WETH", "decimals": 18},
+            "exchange": "uniswap_v3",
+            "fee": 500,
+            "tickSpacing": 10,
         }
     }
 
-    token_symbols = {
-        usdc_addr: 'USDC',
-        weth_addr: 'WETH'
-    }
+    token_symbols = {usdc_addr: "USDC", weth_addr: "WETH"}
 
-    token_decimals = {
-        usdc_addr: 6,
-        weth_addr: 18
-    }
+    token_decimals = {usdc_addr: 6, weth_addr: 18}
 
     # Mock prices (WETH = $4000, USDC = $1)
-    token_prices = {
-        weth_addr: Decimal("4000"),
-        usdc_addr: Decimal("1")
-    }
+    token_prices = {weth_addr: Decimal("4000"), usdc_addr: Decimal("1")}
 
     print(f"\n📊 Test Setup:")
     print(f"  Mock pools: {len(mock_pools)}")
-    print(f"  Token prices: WETH=${token_prices[weth_addr]}, USDC=${token_prices[usdc_addr]}")
+    print(
+        f"  Token prices: WETH=${token_prices[weth_addr]}, USDC=${token_prices[usdc_addr]}"
+    )
     print(f"  Min liquidity threshold: ${filter_instance.min_liquidity_usd:,.0f}")
 
     # Filter V3 pools
@@ -87,7 +71,7 @@ async def test_v3_filtering():
         pools=mock_pools,
         token_symbols=token_symbols,
         token_decimals=token_decimals,
-        token_prices=token_prices
+        token_prices=token_prices,
     )
 
     print(f"\n📈 Results:")
