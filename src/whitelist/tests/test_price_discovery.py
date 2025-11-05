@@ -6,23 +6,21 @@ This demonstrates how to use the new V2, V3, and V4 price discovery methods.
 
 import asyncio
 import logging
+import sys
 from decimal import Decimal
 from pathlib import Path
-import sys
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from web3 import Web3
+
 from src.config import ConfigManager
 from src.core.storage.postgres import PostgresStorage
 from src.whitelist.liquidity_filter import PoolLiquidityFilter
-from web3 import Web3
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -31,13 +29,13 @@ async def main():
     # Initialize
     config = ConfigManager()
     db_config = {
-        'host': config.database.POSTGRES_HOST,
-        'port': config.database.POSTGRES_PORT,
-        'user': config.database.POSTGRES_USER,
-        'password': config.database.POSTGRES_PASSWORD,
-        'database': config.database.POSTGRES_DB,
-        'pool_size': 10,
-        'pool_timeout': 10
+        "host": config.database.POSTGRES_HOST,
+        "port": config.database.POSTGRES_PORT,
+        "user": config.database.POSTGRES_USER,
+        "password": config.database.POSTGRES_PASSWORD,
+        "database": config.database.POSTGRES_DB,
+        "pool_size": 10,
+        "pool_timeout": 10,
     }
 
     storage = PostgresStorage(config=db_config)
@@ -52,24 +50,37 @@ async def main():
             web3=web3,
             min_liquidity_usd=1000.0,
             min_liquidity_v2_usd=1000.0,
-            chain="ethereum"
+            chain="ethereum",
         )
 
         # Build whitelist and collect token metadata (symbols + decimals)
         logger.info("📊 Building whitelist and collecting token metadata...")
         from src.whitelist.builder import TokenWhitelistBuilder
+
         builder = TokenWhitelistBuilder(storage=storage)
         whitelist_result = await builder.build_whitelist()
         whitelisted_tokens = set(whitelist_result["tokens"])
 
         # Extract symbols and decimals from builder's token_info
-        token_symbols = {addr: info['symbol'] for addr, info in builder.token_info.items() if 'symbol' in info}
-        token_decimals = {addr: info['decimals'] for addr, info in builder.token_info.items() if 'decimals' in info}
+        token_symbols = {
+            addr: info["symbol"]
+            for addr, info in builder.token_info.items()
+            if "symbol" in info
+        }
+        token_decimals = {
+            addr: info["decimals"]
+            for addr, info in builder.token_info.items()
+            if "decimals" in info
+        }
 
         logger.info(f"✅ Whitelist built with {len(whitelisted_tokens)} tokens")
-        logger.info(f"✅ Collected {len(token_symbols)} symbols and {len(token_decimals)} decimals from builder\n")
+        logger.info(
+            f"✅ Collected {len(token_symbols)} symbols and {len(token_decimals)} decimals from builder\n"
+        )
 
-        trusted_tokens = config.chains.get_trusted_tokens_for_chain().get("ethereum", {})
+        trusted_tokens = config.chains.get_trusted_tokens_for_chain().get(
+            "ethereum", {}
+        )
         trusted_addresses = set(addr.lower() for addr in trusted_tokens.values())
 
         query = """
@@ -94,14 +105,14 @@ async def main():
             results = await conn.fetch(
                 query,
                 [addr.lower() for addr in whitelisted_tokens],
-                [addr.lower() for addr in trusted_addresses]
+                [addr.lower() for addr in trusted_addresses],
             )
 
         # Collect all tokens from pools (both whitelisted and trusted)
         all_tokens_in_pools = set()
         for row in results:
-            all_tokens_in_pools.add(row['token0'])
-            all_tokens_in_pools.add(row['token1'])
+            all_tokens_in_pools.add(row["token0"])
+            all_tokens_in_pools.add(row["token1"])
 
         # For price discovery, we need to price ALL tokens (whitelisted + trusted)
         all_tokens = all_tokens_in_pools
@@ -111,12 +122,16 @@ async def main():
 
         trusted_in_pools = trusted_addresses & all_tokens_in_pools
         logger.info(f"✅ Found {len(all_tokens)} total tokens in V3 pools")
-        logger.info(f"   ({len(whitelisted_in_pools)} whitelisted + {len(trusted_in_pools)} trusted)\n")
+        logger.info(
+            f"   ({len(whitelisted_in_pools)} whitelisted + {len(trusted_in_pools)} trusted)\n"
+        )
 
         # Fetch missing decimals on-chain for tokens not in builder's token_info
         missing_decimals = all_tokens - set(token_decimals.keys())
         if missing_decimals:
-            logger.info(f"🔍 Fetching {len(missing_decimals)} missing decimals on-chain...")
+            logger.info(
+                f"🔍 Fetching {len(missing_decimals)} missing decimals on-chain..."
+            )
             token_decimals = await liquidity_filter.fetch_missing_decimals(
                 all_tokens, token_decimals
             )
@@ -136,7 +151,13 @@ async def main():
         initial_prices = {}
         for token_addr, symbol in token_symbols.items():
             symbol_upper = symbol.upper()
-            exchange_symbol = "ETH" if symbol_upper == "WETH" else "BTC" if symbol_upper == "WBTC" else symbol_upper
+            exchange_symbol = (
+                "ETH"
+                if symbol_upper == "WETH"
+                else "BTC"
+                if symbol_upper == "WBTC"
+                else symbol_upper
+            )
 
             if exchange_symbol in binance_prices:
                 initial_prices[token_addr] = binance_prices[exchange_symbol]
@@ -162,7 +183,7 @@ async def main():
             initial_prices=initial_prices,
             token_decimals=token_decimals,
             v2_factories=v2_factories,
-            max_iterations=10
+            max_iterations=10,
         )
 
         logger.info(f"Total prices after V2: {len(prices_after_v2)}\n")
@@ -174,7 +195,7 @@ async def main():
 
         v3_factories = [
             "0x1F98431c8aD98523631AE4a59f267346ea31F984",  # Uniswap V3
-            "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865"   # PancakeSwap V3
+            "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",  # PancakeSwap V3
         ]
 
         prices_after_v3 = await liquidity_filter.discover_prices_from_v3_pools(
@@ -183,7 +204,7 @@ async def main():
             initial_prices=prices_after_v2,
             token_decimals=token_decimals,
             v3_factories=v3_factories,
-            max_iterations=10
+            max_iterations=10,
         )
 
         logger.info(f"Total prices after V3: {len(prices_after_v3)}\n")
@@ -203,7 +224,7 @@ async def main():
             initial_prices=prices_after_v3,
             token_decimals=token_decimals,
             v4_factories=v4_factories,
-            max_iterations=10
+            max_iterations=10,
         )
 
         logger.info(f"Total prices after V4: {len(prices_after_v4)}\n")
@@ -221,17 +242,31 @@ async def main():
         logger.info(f"Tokens from V3 pools query: {len(all_tokens)}")
         logger.info(f"  - Whitelisted: {len(whitelisted_in_pools)}")
         logger.info(f"  - Trusted (WETH, USDC, etc.): {len(trusted_in_pools)}")
-        logger.info(f"Additional tokens discovered via V2/V3/V4: {len(extra_tokens_discovered)}")
+        logger.info(
+            f"Additional tokens discovered via V2/V3/V4: {len(extra_tokens_discovered)}"
+        )
         logger.info(f"Total unique token prices: {len(all_priced)}")
         logger.info(f"")
         logger.info(f"Exchange prices: {len(initial_prices)}")
-        logger.info(f"After V2: {len(prices_after_v2)} (+{len(prices_after_v2) - len(initial_prices)})")
-        logger.info(f"After V3: {len(prices_after_v3)} (+{len(prices_after_v3) - len(prices_after_v2)})")
-        logger.info(f"After V4: {len(prices_after_v4)} (+{len(prices_after_v4) - len(prices_after_v3)})")
+        logger.info(
+            f"After V2: {len(prices_after_v2)} (+{len(prices_after_v2) - len(initial_prices)})"
+        )
+        logger.info(
+            f"After V3: {len(prices_after_v3)} (+{len(prices_after_v3) - len(prices_after_v2)})"
+        )
+        logger.info(
+            f"After V4: {len(prices_after_v4)} (+{len(prices_after_v4) - len(prices_after_v3)})"
+        )
         logger.info(f"")
-        logger.info(f"Whitelisted tokens with prices: {len(whitelisted_with_prices)} / {len(whitelisted_in_pools)}")
-        logger.info(f"Coverage (whitelisted only): {100 * len(whitelisted_with_prices) / len(whitelisted_in_pools):.1f}%")
-        logger.info(f"Still missing: {len(whitelisted_in_pools) - len(whitelisted_with_prices)}")
+        logger.info(
+            f"Whitelisted tokens with prices: {len(whitelisted_with_prices)} / {len(whitelisted_in_pools)}"
+        )
+        logger.info(
+            f"Coverage (whitelisted only): {100 * len(whitelisted_with_prices) / len(whitelisted_in_pools):.1f}%"
+        )
+        logger.info(
+            f"Still missing: {len(whitelisted_in_pools) - len(whitelisted_with_prices)}"
+        )
         logger.info("=" * 80)
 
     finally:

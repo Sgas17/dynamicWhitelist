@@ -5,15 +5,16 @@ This module provides specialized exception classes and error handling
 utilities for robust batch calling operations.
 """
 
-import time
-from typing import Optional, Dict, Any
 import logging
+import time
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class BatchError(Exception):
     """Base exception for batch operations."""
+
     pass
 
 
@@ -27,16 +28,19 @@ class RateLimitError(BatchError):
 
 class NetworkError(BatchError):
     """Raised when network-related errors occur."""
+
     pass
 
 
 class ContractError(BatchError):
     """Raised when contract-related errors occur."""
+
     pass
 
 
 class ValidationError(BatchError):
     """Raised when input validation fails."""
+
     pass
 
 
@@ -149,8 +153,7 @@ class ProviderRotator:
     def get_available_providers(self) -> list:
         """Get list of currently available provider names."""
         return [
-            name for name in self.provider_names
-            if self._is_provider_available(name)
+            name for name in self.provider_names if self._is_provider_available(name)
         ]
 
 
@@ -178,22 +181,31 @@ class ErrorHandler:
         error_str = str(error).lower()
 
         # Rate limiting errors
-        if any(keyword in error_str for keyword in ['rate limit', 'too many requests', '429']):
-            return 'rate_limit'
+        if any(
+            keyword in error_str
+            for keyword in ["rate limit", "too many requests", "429"]
+        ):
+            return "rate_limit"
 
         # Network connectivity errors
-        if any(keyword in error_str for keyword in ['connection', 'timeout', 'network', 'dns']):
-            return 'network'
+        if any(
+            keyword in error_str
+            for keyword in ["connection", "timeout", "network", "dns"]
+        ):
+            return "network"
 
         # Contract execution errors
-        if any(keyword in error_str for keyword in ['revert', 'execution reverted', 'out of gas']):
-            return 'contract'
+        if any(
+            keyword in error_str
+            for keyword in ["revert", "execution reverted", "out of gas"]
+        ):
+            return "contract"
 
         # Validation errors
-        if any(keyword in error_str for keyword in ['invalid', 'bad request', '400']):
-            return 'validation'
+        if any(keyword in error_str for keyword in ["invalid", "bad request", "400"]):
+            return "validation"
 
-        return 'unknown'
+        return "unknown"
 
     def should_retry(self, error: Exception, attempt: int, max_retries: int) -> bool:
         """
@@ -213,15 +225,15 @@ class ErrorHandler:
         error_category = self.classify_error(error)
 
         # Don't retry validation errors
-        if error_category == 'validation':
+        if error_category == "validation":
             return False
 
         # Retry network and rate limit errors
-        if error_category in ['network', 'rate_limit', 'unknown']:
+        if error_category in ["network", "rate_limit", "unknown"]:
             return True
 
         # Don't retry contract errors (they're deterministic)
-        if error_category == 'contract':
+        if error_category == "contract":
             return False
 
         return False
@@ -240,14 +252,14 @@ class ErrorHandler:
         error_category = self.classify_error(error)
 
         # Base exponential backoff
-        base_delay = min(2 ** attempt, 60)  # Cap at 60 seconds
+        base_delay = min(2**attempt, 60)  # Cap at 60 seconds
 
         # Rate limit errors get longer delays
-        if error_category == 'rate_limit':
+        if error_category == "rate_limit":
             return base_delay * 2
 
         # Network errors get standard backoff
-        if error_category == 'network':
+        if error_category == "network":
             return base_delay
 
         # Unknown errors get conservative delay
@@ -264,20 +276,20 @@ class ErrorHandler:
         error_category = self.classify_error(error)
 
         log_data = {
-            'error_type': type(error).__name__,
-            'error_category': error_category,
-            'error_message': str(error),
-            **context
+            "error_type": type(error).__name__,
+            "error_category": error_category,
+            "error_message": str(error),
+            **context,
         }
 
         # Log validation errors as warnings
-        if error_category == 'validation':
+        if error_category == "validation":
             self.logger.warning("Validation error occurred", extra=log_data)
         # Log contract errors as errors
-        elif error_category == 'contract':
+        elif error_category == "contract":
             self.logger.error("Contract execution failed", extra=log_data)
         # Log rate limit as info (expected)
-        elif error_category == 'rate_limit':
+        elif error_category == "rate_limit":
             self.logger.info("Rate limit encountered", extra=log_data)
         # Everything else as warning
         else:

@@ -1,13 +1,14 @@
-import json
 import asyncio
 import functools
+import json
 from typing import Any, Callable, Optional, TypeVar
+
 import nats
-from nats.errors import NoRespondersError
-from nats.aio.subscription import Subscription, Msg
 from nats.aio.client import Client as NATS
-from nats.js.errors import NotFoundError
+from nats.aio.subscription import Msg, Subscription
+from nats.errors import NoRespondersError
 from nats.js.client import JetStreamContext
+from nats.js.errors import NotFoundError
 
 T = TypeVar("T")
 
@@ -15,7 +16,7 @@ DEFAULT_TIMEOUT = 30.0
 DEFAULT_NATS_URLS = {
     "local": "nats://localhost:4222",
     "dev": "nats://nats:4222",
-    "production": "nats://nats-server:4222"
+    "production": "nats://nats-server:4222",
 }
 
 
@@ -39,7 +40,7 @@ class NatsClient:
     A simple NATS client for JSON-encoded messages.
     Methods starting with 'a' execute asynchronously.
     """
-    
+
     def __init__(self, env: str = "local"):
         self.url = _get_nats_url(env)
         self.nc: Optional[NATS] = None
@@ -77,17 +78,12 @@ class NatsClient:
         asyncio.run(self.apublish(subject, msg))
 
     # Subscription methods
-    async def asubscribe(
-            self,
-            subject: str,
-            callback_hdlr: Callable[[Any], None]
-    ):
+    async def asubscribe(self, subject: str, callback_hdlr: Callable[[Any], None]):
         """Asynchronously subscribe to a subject"""
         if not self.nc:
             raise ConnectionError("Not connected to NATS server")
         wrapped_callback = functools.partial(
-            self.subscribe_cb_wrapper,
-            callback_hdlr=callback_hdlr
+            self.subscribe_cb_wrapper, callback_hdlr=callback_hdlr
         )
         return await self.nc.subscribe(subject, cb=wrapped_callback)
 
@@ -96,7 +92,9 @@ class NatsClient:
         return asyncio.run(self.asubscribe(subject, callback_hdlr))
 
     # Request-reply methods
-    async def arequest(self, subject: str, msg: Any, timeout: float = DEFAULT_TIMEOUT) -> Any:
+    async def arequest(
+        self, subject: str, msg: Any, timeout: float = DEFAULT_TIMEOUT
+    ) -> Any:
         """Asynchronously send a request and wait for response"""
         if not self.nc:
             raise ConnectionError("Not connected to NATS server")
@@ -121,7 +119,9 @@ class NatsClient:
         asyncio.run(self.aunsubscribe(sub))
 
     # Callback wrappers
-    async def subscribe_cb_wrapper(self, msg: Msg, callback_hdlr: Callable[[Any], None]):
+    async def subscribe_cb_wrapper(
+        self, msg: Msg, callback_hdlr: Callable[[Any], None]
+    ):
         """Wrapper for subscription callbacks to handle JSON decoding"""
         decoded_msg = loads(msg.data.decode())
         callback_hdlr(decoded_msg)
@@ -138,7 +138,7 @@ class NatsClientJS(NatsClient):
     A NATS client with JetStream support for persistent messaging.
     Extends NatsClient with stream management and durable subscriptions.
     """
-    
+
     def __init__(self, env: str = "local"):
         super().__init__(env)
         self.js: Optional[JetStreamContext] = None
@@ -158,14 +158,18 @@ class NatsClientJS(NatsClient):
         except NotFoundError:
             return False
 
-    async def aregister_new_stream(self, stream_name: str, subjects: list[str], no_ack: bool = True):
+    async def aregister_new_stream(
+        self, stream_name: str, subjects: list[str], no_ack: bool = True
+    ):
         """Register a new JetStream stream"""
         if not await self._stream_exists(stream_name):
             await self.js.add_stream(name=stream_name, subjects=subjects, no_ack=no_ack)
             self._streams.add(stream_name)
             print(f"Registered stream: {stream_name} with subjects: {subjects}")
 
-    def register_stream(self, stream_name: str, subjects: list[str], no_ack: bool = True):
+    def register_stream(
+        self, stream_name: str, subjects: list[str], no_ack: bool = True
+    ):
         """Register a new JetStream stream (synchronous wrapper)"""
         asyncio.run(self.aregister_new_stream(stream_name, subjects, no_ack))
 
@@ -187,16 +191,19 @@ class NatsClientJS(NatsClient):
         enc_msg = dumps(msg).encode()
         await self.js.publish(subject, enc_msg)
 
-    async def asubscribe(self, subject: str, callback_hdlr: Callable[[Any], None], durable: str = None):
+    async def asubscribe(
+        self, subject: str, callback_hdlr: Callable[[Any], None], durable: str = None
+    ):
         """Subscribe to a JetStream subject"""
         if not self.js:
             raise ConnectionError("JetStream not initialized")
         wrapped_callback = functools.partial(
-            self.subscribe_cb_wrapper, 
-            callback_hdlr=callback_hdlr
+            self.subscribe_cb_wrapper, callback_hdlr=callback_hdlr
         )
         return await self.js.subscribe(subject, cb=wrapped_callback, durable=durable)
 
-    def subscribe_durable(self, subject: str, callback_hdlr: Callable[[Any], None], durable: str):
+    def subscribe_durable(
+        self, subject: str, callback_hdlr: Callable[[Any], None], durable: str
+    ):
         """Subscribe to a JetStream subject with durable name (synchronous wrapper)"""
         return asyncio.run(self.asubscribe(subject, callback_hdlr, durable))

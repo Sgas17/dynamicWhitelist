@@ -2,8 +2,10 @@
 Pytest configuration for processor tests.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock
+
+import pytest
+
 
 @pytest.fixture
 def mock_config_manager():
@@ -15,6 +17,7 @@ def mock_config_manager():
     mock_config.database.REDIS_DB = 0
     mock_config.database.REDIS_PASSWORD = None
     return mock_config
+
 
 @pytest.fixture
 def mock_redis_client():

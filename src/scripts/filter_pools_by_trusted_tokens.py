@@ -2,9 +2,11 @@
 Filter Uniswap V2/V3/V4 pools to find those containing at least one trusted token.
 """
 
-import polars as pl
 from pathlib import Path
-from typing import List, Dict, Set
+from typing import Dict, List, Set
+
+import polars as pl
+
 from src.config import ConfigManager
 
 
@@ -69,8 +71,7 @@ def load_v4_pools(data_dir: Path) -> pl.DataFrame:
 
 
 def filter_v3_pools_by_trusted_tokens(
-    pools_df: pl.DataFrame,
-    trusted_tokens: Dict[str, str]
+    pools_df: pl.DataFrame, trusted_tokens: Dict[str, str]
 ) -> pl.DataFrame:
     """
     Filter V3 pools to those containing at least one trusted token.
@@ -90,8 +91,8 @@ def filter_v3_pools_by_trusted_tokens(
 
     # Filter pools where token0 OR token1 is in trusted tokens
     filtered = pools_df.filter(
-        (pl.col("token0").str.to_lowercase().is_in(trusted_addresses)) |
-        (pl.col("token1").str.to_lowercase().is_in(trusted_addresses))
+        (pl.col("token0").str.to_lowercase().is_in(trusted_addresses))
+        | (pl.col("token1").str.to_lowercase().is_in(trusted_addresses))
     )
 
     # Add column indicating which token(s) are trusted
@@ -113,8 +114,7 @@ def filter_v3_pools_by_trusted_tokens(
 
 
 def filter_v4_pools_by_trusted_tokens(
-    pools_df: pl.DataFrame,
-    trusted_tokens: Dict[str, str]
+    pools_df: pl.DataFrame, trusted_tokens: Dict[str, str]
 ) -> pl.DataFrame:
     """
     Filter V4 pools to those containing at least one trusted token.
@@ -134,8 +134,8 @@ def filter_v4_pools_by_trusted_tokens(
 
     # Filter pools where currency0 OR currency1 is in trusted tokens
     filtered = pools_df.filter(
-        (pl.col("currency0").str.to_lowercase().is_in(trusted_addresses)) |
-        (pl.col("currency1").str.to_lowercase().is_in(trusted_addresses))
+        (pl.col("currency0").str.to_lowercase().is_in(trusted_addresses))
+        | (pl.col("currency1").str.to_lowercase().is_in(trusted_addresses))
     )
 
     return filtered
@@ -153,7 +153,9 @@ def main():
     trusted_tokens = chain_config.get_trusted_tokens_for_chain()[chain_name]
 
     print(f"🔍 Filtering pools with trusted tokens: {list(trusted_tokens.keys())}")
-    print(f"Trusted token addresses: {[addr[:10]+'...' for addr in trusted_tokens.values()]}")
+    print(
+        f"Trusted token addresses: {[addr[:10] + '...' for addr in trusted_tokens.values()]}"
+    )
 
     # Data directory
     data_dir = Path("/home/sam-sullivan/dynamicWhitelist/data/ethereum")

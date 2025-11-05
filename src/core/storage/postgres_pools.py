@@ -7,14 +7,15 @@ Maintains legacy column ordering for compatibility with code using row numbers.
 KISS: Simple CRUD operations for DEX pool data.
 """
 
-import os
 import json
 import logging
-from typing import List, Dict, Optional, Any
+import os
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
 from psycopg2.extras import execute_values
+from sqlalchemy import create_engine, text
 
 # Import config system
 from ...config.manager import ConfigManager
@@ -22,7 +23,9 @@ from ...config.manager import ConfigManager
 load_dotenv()
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -134,7 +137,9 @@ def _add_new_columns_if_missing(conn, table_name: str):
 
         if not result.fetchone():
             logger.info(f"Adding column {col_name} to {table_name}")
-            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+            conn.execute(
+                text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
+            )
             conn.commit()
 
 
@@ -150,10 +155,10 @@ def safe_hex_or_str(val):
 def normalize_address(address) -> Optional[str]:
     """
     Normalize Ethereum address to lowercase for consistent storage.
-    
+
     Args:
         address: Address as string, bytes, or None
-        
+
     Returns:
         Lowercase address string or None
     """
@@ -360,7 +365,9 @@ def get_pools_by_token(
         return pools
 
 
-def get_pools_by_factory(factory_address: str, chain_id: int, active_only: bool = True) -> List[Dict]:
+def get_pools_by_factory(
+    factory_address: str, chain_id: int, active_only: bool = True
+) -> List[Dict]:
     """Get all pools for a specific factory (protocol)."""
     engine = get_database_engine()
     table_name = get_table_name(chain_id)
@@ -381,7 +388,9 @@ def get_pools_by_factory(factory_address: str, chain_id: int, active_only: bool 
         return [dict(row._mapping) for row in result]
 
 
-def get_recent_pools(hours_back: int, chain_id: int, active_only: bool = True) -> List[Dict]:
+def get_recent_pools(
+    hours_back: int, chain_id: int, active_only: bool = True
+) -> List[Dict]:
     """Get pools created in the last N hours."""
     engine = get_database_engine()
     table_name = get_table_name(chain_id)
@@ -405,7 +414,9 @@ def get_recent_pools(hours_back: int, chain_id: int, active_only: bool = True) -
         return [dict(row._mapping) for row in result]
 
 
-def get_pools_since_block(block_number: int, chain_id: int, active_only: bool = True) -> List[Dict]:
+def get_pools_since_block(
+    block_number: int, chain_id: int, active_only: bool = True
+) -> List[Dict]:
     """Get pools created after a specific block."""
     engine = get_database_engine()
     table_name = get_table_name(chain_id)
@@ -426,7 +437,9 @@ def get_pools_since_block(block_number: int, chain_id: int, active_only: bool = 
         return [dict(row._mapping) for row in result]
 
 
-def get_all_pools(chain_id: int, active_only: bool = True, limit: Optional[int] = None) -> List[Dict]:
+def get_all_pools(
+    chain_id: int, active_only: bool = True, limit: Optional[int] = None
+) -> List[Dict]:
     """Get all pools, optionally limited."""
     engine = get_database_engine()
     table_name = get_table_name(chain_id)
@@ -531,7 +544,8 @@ def remove_pools_from_database(pool_data: List[Dict], chain_id: int = None):
     with engine.connect() as conn:
         for pool in pool_data:
             conn.execute(
-                text(f"DELETE FROM {table_name} WHERE address = :address"), {"address": pool["address"]}
+                text(f"DELETE FROM {table_name} WHERE address = :address"),
+                {"address": pool["address"]},
             )
         conn.commit()
 
@@ -555,7 +569,9 @@ def purge_blacklisted_pools(chain_id: int, days_old: int = 30) -> int:
         )
         conn.commit()
         deleted_count = result.rowcount
-        logger.info(f"Purged {deleted_count} blacklisted pools older than {days_old} days")
+        logger.info(
+            f"Purged {deleted_count} blacklisted pools older than {days_old} days"
+        )
         return deleted_count
 
 
@@ -580,7 +596,13 @@ def get_protocol_from_factory(factory_address: str, chain: str = "ethereum") -> 
         factory_lower = factory_address.lower()
 
         # Check each protocol's factory addresses
-        for protocol_name in ["uniswap_v2", "uniswap_v3", "uniswap_v4", "sushiswap_v3", "pancakeswap_v3"]:
+        for protocol_name in [
+            "uniswap_v2",
+            "uniswap_v3",
+            "uniswap_v4",
+            "sushiswap_v3",
+            "pancakeswap_v3",
+        ]:
             try:
                 factories = config.protocols.get_factory_addresses(protocol_name, chain)
                 if factory_lower in [f.lower() for f in factories]:
@@ -612,7 +634,13 @@ def get_all_factory_addresses(chain: str = "ethereum") -> Dict[str, List[str]]:
         config = ConfigManager()
         result = {}
 
-        for protocol_name in ["uniswap_v2", "uniswap_v3", "uniswap_v4", "sushiswap_v3", "pancakeswap_v3"]:
+        for protocol_name in [
+            "uniswap_v2",
+            "uniswap_v3",
+            "uniswap_v4",
+            "sushiswap_v3",
+            "pancakeswap_v3",
+        ]:
             try:
                 factories = config.protocols.get_factory_addresses(protocol_name, chain)
                 if factories:
@@ -652,7 +680,9 @@ def get_pool_statistics(chain_id: int, chain: str = "ethereum") -> Dict[str, Any
 
         # Active pools
         active_result = conn.execute(
-            text(f"SELECT COUNT(*) FROM {table_name} WHERE is_active = TRUE AND is_blacklisted = FALSE")
+            text(
+                f"SELECT COUNT(*) FROM {table_name} WHERE is_active = TRUE AND is_blacklisted = FALSE"
+            )
         )
         active_pools = active_result.scalar()
 
@@ -691,7 +721,9 @@ def get_pool_statistics(chain_id: int, chain: str = "ethereum") -> Dict[str, Any
 # ============================================================================
 
 
-def check_uniswap_database_results(LP_TYPE: str, chain_id: int = None, chain: str = "ethereum"):
+def check_uniswap_database_results(
+    LP_TYPE: str, chain_id: int = None, chain: str = "ethereum"
+):
     """Check the results in the database (legacy function for compatibility)."""
     engine = get_database_engine()
     if chain_id is None:
@@ -718,15 +750,17 @@ def check_uniswap_database_results(LP_TYPE: str, chain_id: int = None, chain: st
             V3_sql_query = f"""
                 SELECT address, fee, asset0, asset1, creation_block, factory, 'V3' as version
                 FROM {table_name}
-                WHERE factory IN ({','.join([f"'{addr}'" for addr in v3_factories])})
+                WHERE factory IN ({",".join([f"'{addr}'" for addr in v3_factories])})
                 ORDER BY creation_block DESC
                 LIMIT 5;"""
             result = conn.execute(text(V3_sql_query))
         elif LP_TYPE == "UniswapV4":
-            v4_pool_manager = config.protocols.get_factory_addresses("uniswap_v4", chain)
+            v4_pool_manager = config.protocols.get_factory_addresses(
+                "uniswap_v4", chain
+            )
             V4_sql_query = f"""SELECT address, fee, asset0, asset1, creation_block, factory, additional_data, 'V4' as version
                 FROM {table_name}
-                WHERE factory IN ({','.join([f"'{addr}'" for addr in v4_pool_manager])})
+                WHERE factory IN ({",".join([f"'{addr}'" for addr in v4_pool_manager])})
                 ORDER BY creation_block DESC
                 LIMIT 5;
             """
@@ -789,9 +823,17 @@ def inspect_existing_table_schema(chain_id: int = None):
         print(f"\nTable schema for {table_name}:")
         for row in result:
             nullable = "NULL" if row.is_nullable == "YES" else "NOT NULL"
-            length_info = f"({row.character_maximum_length})" if row.character_maximum_length else ""
-            default_info = f" DEFAULT {row.column_default}" if row.column_default else ""
-            print(f"  {row.column_name}: {row.data_type}{length_info} {nullable}{default_info}")
+            length_info = (
+                f"({row.character_maximum_length})"
+                if row.character_maximum_length
+                else ""
+            )
+            default_info = (
+                f" DEFAULT {row.column_default}" if row.column_default else ""
+            )
+            print(
+                f"  {row.column_name}: {row.data_type}{length_info} {nullable}{default_info}"
+            )
             columns.append(
                 {
                     "name": row.column_name,

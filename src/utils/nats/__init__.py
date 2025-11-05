@@ -9,4 +9,4 @@ from .client import NatsClient, NatsClientJS
 from .json_helpers import dumps, loads
 from .whitelist_publisher import WhitelistPublisher
 
-__all__ = ['NatsClient', 'NatsClientJS', 'WhitelistPublisher', 'dumps', 'loads']
+__all__ = ["NatsClient", "NatsClientJS", "WhitelistPublisher", "dumps", "loads"]

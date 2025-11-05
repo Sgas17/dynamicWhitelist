@@ -79,7 +79,9 @@ def analyze_unmapped_tokens():
     print("🔍 KEY INSIGHTS")
     print("=" * 80)
     print()
-    print(f"1. {len(both_unmapped)} tokens ({len(both_unmapped)/len(hyperliquid_set | lighter_set)*100:.1f}% of all unmapped) are problematic")
+    print(
+        f"1. {len(both_unmapped)} tokens ({len(both_unmapped) / len(hyperliquid_set | lighter_set) * 100:.1f}% of all unmapped) are problematic"
+    )
     print("   → These need on-chain price discovery (V2/V3 pools)")
     print()
     print(f"2. {len(only_hyperliquid)} tokens can potentially use Lighter prices")
@@ -88,8 +90,20 @@ def analyze_unmapped_tokens():
 
     # Notable major tokens in both_unmapped
     major_tokens = {
-        "BTC", "ETH", "USDC", "USDT", "DAI", "WBTC", "WETH",
-        "UNI", "AAVE", "LINK", "CRV", "MKR", "SNX", "COMP"
+        "BTC",
+        "ETH",
+        "USDC",
+        "USDT",
+        "DAI",
+        "WBTC",
+        "WETH",
+        "UNI",
+        "AAVE",
+        "LINK",
+        "CRV",
+        "MKR",
+        "SNX",
+        "COMP",
     }
     major_unmapped = both_unmapped & major_tokens
 

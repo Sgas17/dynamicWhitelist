@@ -9,10 +9,10 @@ Integration with WhitelistPublisher:
     Import and use in src/core/storage/whitelist_publisher.py _publish_to_nats() method.
 """
 
-import logging
-from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional
 import json
+import logging
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional
 
 import nats
 
@@ -67,7 +67,7 @@ class PoolWhitelistNatsPublisher:
         chain: str,
         pools: List[Dict[str, Any]],
         publish_minimal: bool = True,
-        publish_full: bool = True
+        publish_full: bool = True,
     ) -> Dict[str, bool]:
         """
         Publish pool whitelist to NATS topics.
@@ -113,7 +113,7 @@ class PoolWhitelistNatsPublisher:
                 minimal_msg = {
                     "pools": [pool["address"] for pool in pools],
                     "chain": chain,
-                    "timestamp": timestamp
+                    "timestamp": timestamp,
                 }
                 minimal_subject = f"whitelist.pools.{chain}.minimal"
 
@@ -133,11 +133,7 @@ class PoolWhitelistNatsPublisher:
         # Publish full message (for poolStateArena)
         if publish_full:
             try:
-                full_msg = {
-                    "pools": pools,
-                    "chain": chain,
-                    "timestamp": timestamp
-                }
+                full_msg = {"pools": pools, "chain": chain, "timestamp": timestamp}
                 full_subject = f"whitelist.pools.{chain}.full"
 
                 payload = json.dumps(full_msg).encode()
@@ -160,7 +156,7 @@ class PoolWhitelistNatsPublisher:
         chain: str,
         reference_block: int,
         snapshot_timestamp: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Publish snapshot reference block for ExEx synchronization.
@@ -203,7 +199,7 @@ class PoolWhitelistNatsPublisher:
             "chain": chain,
             "reference_block": reference_block,
             "snapshot_timestamp": snapshot_timestamp or datetime.now(UTC).isoformat(),
-            "metadata": metadata or {}
+            "metadata": metadata or {},
         }
 
         try:
@@ -222,9 +218,7 @@ class PoolWhitelistNatsPublisher:
 
 # Standalone function for easy integration
 async def publish_pool_whitelist(
-    chain: str,
-    pools: List[Dict[str, Any]],
-    nats_url: str = "nats://localhost:4222"
+    chain: str, pools: List[Dict[str, Any]], nats_url: str = "nats://localhost:4222"
 ) -> Dict[str, bool]:
     """
     Standalone function to publish pool whitelist.
@@ -261,7 +255,7 @@ async def publish_snapshot_reference_block(
     reference_block: int,
     snapshot_timestamp: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
-    nats_url: str = "nats://localhost:4222"
+    nats_url: str = "nats://localhost:4222",
 ) -> bool:
     """
     Standalone function to publish snapshot reference block.
@@ -288,5 +282,5 @@ async def publish_snapshot_reference_block(
             chain=chain,
             reference_block=reference_block,
             snapshot_timestamp=snapshot_timestamp,
-            metadata=metadata
+            metadata=metadata,
         )

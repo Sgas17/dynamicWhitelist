@@ -158,22 +158,16 @@ async def verify_unmapped_tokens():
     both_unmapped = set(overlap_data["both_unmapped"])
 
     print("=" * 80)
-    print(
-        f"VERIFYING {len(both_unmapped)} TOKENS UNMAPPED IN BOTH EXCHANGES"
-    )
+    print(f"VERIFYING {len(both_unmapped)} TOKENS UNMAPPED IN BOTH EXCHANGES")
     print("=" * 80)
     print()
 
     # Check for V2 pools with trusted tokens
     print("🔍 Checking for V2 pools with trusted tokens...")
-    v2_pools = await get_v2_pools_for_tokens(
-        storage, both_unmapped, trusted_addresses
-    )
+    v2_pools = await get_v2_pools_for_tokens(storage, both_unmapped, trusted_addresses)
 
     # Categorize results
-    tokens_with_v2 = {
-        symbol: pools for symbol, pools in v2_pools.items() if pools
-    }
+    tokens_with_v2 = {symbol: pools for symbol, pools in v2_pools.items() if pools}
     tokens_without_v2 = {
         symbol: pools for symbol, pools in v2_pools.items() if not pools
     }
@@ -191,17 +185,13 @@ async def verify_unmapped_tokens():
             print(f"   • {symbol} → pairs with: {', '.join(trusted_list)}")
     print()
 
-    print(
-        f"❌ Tokens WITHOUT V2 pools + trusted: {len(tokens_without_v2)}"
-    )
+    print(f"❌ Tokens WITHOUT V2 pools + trusted: {len(tokens_without_v2)}")
     if tokens_without_v2:
         for symbol in sorted(tokens_without_v2.keys()):
             print(f"   • {symbol}")
     print()
 
-    print(
-        f"⚠️  Tokens not in registry: {len(tokens_not_in_registry)}"
-    )
+    print(f"⚠️  Tokens not in registry: {len(tokens_not_in_registry)}")
     if tokens_not_in_registry:
         for symbol in sorted(tokens_not_in_registry):
             print(f"   • {symbol}")
@@ -216,9 +206,7 @@ async def verify_unmapped_tokens():
     print(
         f"Tokens that are TRULY unpriceable (no exchange price, no V2 pool): {truly_unpriceable}"
     )
-    print(
-        f"Tokens that CAN be priced via V2 pools: {len(tokens_with_v2)}"
-    )
+    print(f"Tokens that CAN be priced via V2 pools: {len(tokens_with_v2)}")
     print()
 
     if tokens_with_v2:

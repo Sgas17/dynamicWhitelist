@@ -4,12 +4,13 @@ Tests for the process_with_all_chains method that collects all chain addresses p
 This demonstrates collecting multiple chain addresses for each token rather than just the best match.
 """
 
-import pytest
+from typing import Any, Dict, List
 from unittest.mock import patch
-from typing import Dict, List, Any
 
-from ..token_matching_processor import TokenMatchingProcessor
+import pytest
+
 from ...fetchers.exchange_fetchers import ExchangeToken
+from ..token_matching_processor import TokenMatchingProcessor
 
 
 class TestAllChainsMatching:

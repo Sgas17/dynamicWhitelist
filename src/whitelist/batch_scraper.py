@@ -7,9 +7,9 @@ batch has an accurate reference block for ExEx synchronization.
 
 import asyncio
 import logging
-from datetime import datetime, UTC
-from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Dict, List, Optional, Tuple
 
 from web3 import Web3
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BatchConfig:
     """Configuration for batch scraping."""
+
     # Ethereum block time in seconds
     block_time_seconds: float = 12.0
 
@@ -39,6 +40,7 @@ class BatchConfig:
 @dataclass
 class BatchResult:
     """Result from scraping a single batch."""
+
     batch_number: int
     protocol: str
     reference_block: int
@@ -61,12 +63,7 @@ class BatchScraper:
     - Publishes per-batch reference blocks to NATS
     """
 
-    def __init__(
-        self,
-        web3: Web3,
-        reth_loader,
-        config: Optional[BatchConfig] = None
-    ):
+    def __init__(self, web3: Web3, reth_loader, config: Optional[BatchConfig] = None):
         """
         Initialize batch scraper.
 
@@ -106,9 +103,7 @@ class BatchScraper:
             await asyncio.sleep(1.0)
 
     def create_batches(
-        self,
-        pools: Dict[str, Dict],
-        batch_type: str = "filtering"
+        self, pools: Dict[str, Dict], batch_type: str = "filtering"
     ) -> List[Tuple[str, List[Dict]]]:
         """
         Create protocol-specific batches.
@@ -150,21 +145,23 @@ class BatchScraper:
 
         # V2 batches
         for i in range(0, len(v2_pools), v2_size):
-            batch = v2_pools[i:i + v2_size]
+            batch = v2_pools[i : i + v2_size]
             batches.append(("v2", batch))
 
         # V3 batches
         for i in range(0, len(v3_pools), v3_size):
-            batch = v3_pools[i:i + v3_size]
+            batch = v3_pools[i : i + v3_size]
             batches.append(("v3", batch))
 
         # V4 batches
         for i in range(0, len(v4_pools), v4_size):
-            batch = v4_pools[i:i + v4_size]
+            batch = v4_pools[i : i + v4_size]
             batches.append(("v4", batch))
 
-        logger.info(f"Created {len(batches)} batches: "
-                    f"{len(v2_pools)} V2, {len(v3_pools)} V3, {len(v4_pools)} V4 pools")
+        logger.info(
+            f"Created {len(batches)} batches: "
+            f"{len(v2_pools)} V2, {len(v3_pools)} V3, {len(v4_pools)} V4 pools"
+        )
 
         return batches
 
@@ -173,7 +170,7 @@ class BatchScraper:
         batch_number: int,
         pools: List[Dict],
         reference_block: int,
-        reference_timestamp: str
+        reference_timestamp: str,
     ) -> BatchResult:
         """
         Scrape a batch of V2 pools.
@@ -188,9 +185,12 @@ class BatchScraper:
             BatchResult with scraping metrics
         """
         import time
+
         start_time = time.time()
 
-        logger.info(f"📦 Scraping V2 batch {batch_number}: {len(pools)} pools at block {reference_block}")
+        logger.info(
+            f"📦 Scraping V2 batch {batch_number}: {len(pools)} pools at block {reference_block}"
+        )
 
         scraped_pools = []
 
@@ -198,15 +198,19 @@ class BatchScraper:
             pool_addr = pool_data.get("address") or pool_data.get("pool_address")
 
             try:
-                reserves, block_number = self.reth_loader.load_v2_pool_snapshot(pool_addr)
+                reserves, block_number = self.reth_loader.load_v2_pool_snapshot(
+                    pool_addr
+                )
 
-                scraped_pools.append({
-                    "address": pool_addr,
-                    "reserves": reserves,
-                    "block_number": block_number,
-                    "reference_block": reference_block,
-                    "protocol": "v2"
-                })
+                scraped_pools.append(
+                    {
+                        "address": pool_addr,
+                        "reserves": reserves,
+                        "block_number": block_number,
+                        "reference_block": reference_block,
+                        "protocol": "v2",
+                    }
+                )
 
             except Exception as e:
                 logger.warning(f"Failed to scrape V2 pool {pool_addr}: {e}")
@@ -222,7 +226,7 @@ class BatchScraper:
             reference_timestamp=reference_timestamp,
             pools_scraped=len(scraped_pools),
             duration_seconds=duration,
-            success=True
+            success=True,
         )
 
     async def scrape_v3_batch_slot0(
@@ -230,7 +234,7 @@ class BatchScraper:
         batch_number: int,
         pools: List[Dict],
         reference_block: int,
-        reference_timestamp: str
+        reference_timestamp: str,
     ) -> Tuple[BatchResult, List[Dict]]:
         """
         Scrape a batch of V3 pools (slot0 only for filtering).
@@ -245,15 +249,18 @@ class BatchScraper:
             Tuple of (BatchResult, scraped_pool_states)
         """
         import time
+
         start_time = time.time()
 
-        logger.info(f"📦 Scraping V3 batch {batch_number}: {len(pools)} pools (slot0) at block {reference_block}")
+        logger.info(
+            f"📦 Scraping V3 batch {batch_number}: {len(pools)} pools (slot0) at block {reference_block}"
+        )
 
         # Prepare configs for batch loading
         pool_configs = [
             {
                 "address": pool.get("address") or pool.get("pool_address"),
-                "tick_spacing": pool.get("tick_spacing")
+                "tick_spacing": pool.get("tick_spacing"),
             }
             for pool in pools
         ]
@@ -276,7 +283,7 @@ class BatchScraper:
                 reference_timestamp=reference_timestamp,
                 pools_scraped=len(states),
                 duration_seconds=duration,
-                success=True
+                success=True,
             ), states
 
         except Exception as e:
@@ -290,7 +297,7 @@ class BatchScraper:
                 pools_scraped=0,
                 duration_seconds=end_time - start_time,
                 success=False,
-                error=str(e)
+                error=str(e),
             ), []
 
     async def scrape_v4_batch_slot0(
@@ -298,7 +305,7 @@ class BatchScraper:
         batch_number: int,
         pools: List[Dict],
         reference_block: int,
-        reference_timestamp: str
+        reference_timestamp: str,
     ) -> Tuple[BatchResult, List[Dict]]:
         """
         Scrape a batch of V4 pools (slot0 only for filtering).
@@ -313,16 +320,19 @@ class BatchScraper:
             Tuple of (BatchResult, scraped_pool_states)
         """
         import time
+
         start_time = time.time()
 
-        logger.info(f"📦 Scraping V4 batch {batch_number}: {len(pools)} pools (slot0) at block {reference_block}")
+        logger.info(
+            f"📦 Scraping V4 batch {batch_number}: {len(pools)} pools (slot0) at block {reference_block}"
+        )
 
         # Prepare configs for batch loading
         pool_configs = [
             {
                 "pool_id": pool.get("pool_id") or pool.get("address"),
                 "tick_spacing": pool.get("tick_spacing"),
-                "pool_manager": pool.get("factory") or pool.get("pool_manager")
+                "pool_manager": pool.get("factory") or pool.get("pool_manager"),
             }
             for pool in pools
         ]
@@ -345,7 +355,7 @@ class BatchScraper:
                 reference_timestamp=reference_timestamp,
                 pools_scraped=len(states),
                 duration_seconds=duration,
-                success=True
+                success=True,
             ), states
 
         except Exception as e:
@@ -359,14 +369,11 @@ class BatchScraper:
                 pools_scraped=0,
                 duration_seconds=end_time - start_time,
                 success=False,
-                error=str(e)
+                error=str(e),
             ), []
 
     async def scrape_all_batches(
-        self,
-        pools: Dict[str, Dict],
-        batch_type: str = "filtering",
-        nats_publisher=None
+        self, pools: Dict[str, Dict], batch_type: str = "filtering", nats_publisher=None
     ) -> Dict[str, any]:
         """
         Scrape all pools in protocol-specific, time-bounded batches.
@@ -405,8 +412,10 @@ class BatchScraper:
             reference_block = self.web3.eth.block_number
             reference_timestamp = datetime.now(UTC).isoformat()
 
-            logger.info(f"📍 Batch {batch_idx + 1}/{len(batches)}: "
-                        f"{protocol.upper()} - Block {reference_block}")
+            logger.info(
+                f"📍 Batch {batch_idx + 1}/{len(batches)}: "
+                f"{protocol.upper()} - Block {reference_block}"
+            )
 
             # Scrape based on protocol
             if protocol == "v2":
@@ -414,7 +423,7 @@ class BatchScraper:
                     batch_number=batch_idx + 1,
                     pools=pool_batch,
                     reference_block=reference_block,
-                    reference_timestamp=reference_timestamp
+                    reference_timestamp=reference_timestamp,
                 )
                 batch_results.append(result)
 
@@ -423,7 +432,7 @@ class BatchScraper:
                     batch_number=batch_idx + 1,
                     pools=pool_batch,
                     reference_block=reference_block,
-                    reference_timestamp=reference_timestamp
+                    reference_timestamp=reference_timestamp,
                 )
                 batch_results.append(result)
                 all_scraped_data.extend(scraped_states)
@@ -433,7 +442,7 @@ class BatchScraper:
                     batch_number=batch_idx + 1,
                     pools=pool_batch,
                     reference_block=reference_block,
-                    reference_timestamp=reference_timestamp
+                    reference_timestamp=reference_timestamp,
                 )
                 batch_results.append(result)
                 all_scraped_data.extend(scraped_states)
@@ -449,14 +458,18 @@ class BatchScraper:
                             "batch_number": batch_idx + 1,
                             "total_batches": len(batches),
                             "protocol": protocol,
-                            "pools_in_batch": result.pools_scraped
-                        }
+                            "pools_in_batch": result.pools_scraped,
+                        },
                     )
                 except Exception as e:
-                    logger.error(f"Failed to publish reference block for batch {batch_idx + 1}: {e}")
+                    logger.error(
+                        f"Failed to publish reference block for batch {batch_idx + 1}: {e}"
+                    )
 
-            logger.info(f"✓ Batch {batch_idx + 1} complete: "
-                        f"{result.pools_scraped} pools in {result.duration_seconds:.2f}s")
+            logger.info(
+                f"✓ Batch {batch_idx + 1} complete: "
+                f"{result.pools_scraped} pools in {result.duration_seconds:.2f}s"
+            )
 
         # Summary
         total_pools = sum(r.pools_scraped for r in batch_results)
@@ -469,7 +482,9 @@ class BatchScraper:
         logger.info(f"  Successful: {successful_batches}/{len(batch_results)}")
         logger.info(f"  Total pools: {total_pools}")
         logger.info(f"  Total duration: {total_duration:.2f}s")
-        logger.info(f"  Avg time per pool: {total_duration / total_pools if total_pools > 0 else 0:.3f}s")
+        logger.info(
+            f"  Avg time per pool: {total_duration / total_pools if total_pools > 0 else 0:.3f}s"
+        )
         logger.info("=" * 80)
 
         return {
@@ -482,12 +497,12 @@ class BatchScraper:
                     "pools_scraped": r.pools_scraped,
                     "duration_seconds": r.duration_seconds,
                     "success": r.success,
-                    "error": r.error
+                    "error": r.error,
                 }
                 for r in batch_results
             ],
             "total_pools": total_pools,
             "total_duration_seconds": total_duration,
             "success": successful_batches == len(batch_results),
-            "scraped_data": all_scraped_data
+            "scraped_data": all_scraped_data,
         }

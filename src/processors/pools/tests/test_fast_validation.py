@@ -7,15 +7,16 @@ This test loads the existing snapshot and processes recent events incrementally.
 This tests the processor logic without requiring hours of data fetching.
 """
 
-import pytest
 import logging
 from pathlib import Path
+
+import pytest
 from web3 import Web3
 
-from src.core.storage.postgres_liquidity import load_liquidity_snapshot
 from src.batchers.uniswap_v3_ticks import UniswapV3TickBatcher
-from src.fetchers.ethereum_fetcher import EthereumFetcher
 from src.config import ConfigManager
+from src.core.storage.postgres_liquidity import load_liquidity_snapshot
+from src.fetchers.ethereum_fetcher import EthereumFetcher
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,7 +37,10 @@ V3_BURN_EVENT = "0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da989
 
 def get_processor():
     """Import and create processor."""
-    from src.processors.pools.unified_liquidity_processor import UnifiedLiquidityProcessor
+    from src.processors.pools.unified_liquidity_processor import (
+        UnifiedLiquidityProcessor,
+    )
+
     return UnifiedLiquidityProcessor(
         chain="ethereum",
         block_chunk_size=100000,
@@ -56,9 +60,9 @@ async def test_fast_validation():
     4. Comparison against live state is correct
     """
 
-    logger.info("\n" + "="*80)
+    logger.info("\n" + "=" * 80)
     logger.info("FAST VALIDATION TEST (10K blocks)")
-    logger.info("="*80 + "\n")
+    logger.info("=" * 80 + "\n")
 
     # Initialize Web3
     w3 = Web3(Web3.HTTPProvider(RPC_URL))
@@ -81,6 +85,7 @@ async def test_fast_validation():
 
     # Clean old data
     import shutil
+
     if test_output.exists():
         shutil.rmtree(test_output)
     test_output.mkdir(parents=True, exist_ok=True)
@@ -90,7 +95,7 @@ async def test_fast_validation():
         end_block=end_block,
         contracts=[V3_TEST_POOL],
         events=[V3_MINT_EVENT, V3_BURN_EVENT],
-        output_dir=str(test_output)
+        output_dir=str(test_output),
     )
 
     if not fetch_result.success:
@@ -102,6 +107,7 @@ async def test_fast_validation():
     # Check for existing snapshot (prerequisite)
     logger.info("Step 2: Checking for existing snapshot...")
     from src.core.storage.postgres_liquidity import load_liquidity_snapshot
+
     existing_snapshot = load_liquidity_snapshot(V3_TEST_POOL, chain_id=1)
 
     if not existing_snapshot:
@@ -110,7 +116,9 @@ async def test_fast_validation():
             "to create baseline snapshot with full event history."
         )
 
-    logger.info(f"✓ Found existing snapshot at block {existing_snapshot['snapshot_block']}")
+    logger.info(
+        f"✓ Found existing snapshot at block {existing_snapshot['snapshot_block']}"
+    )
     logger.info(f"  Ticks with liquidity: {existing_snapshot['total_ticks']}\\n")
 
     # Process recent events incrementally
@@ -119,6 +127,7 @@ async def test_fast_validation():
 
     # Temporarily point processor to test data
     import src.processors.pools.unified_liquidity_processor as proc_module
+
     original_method = proc_module.UnifiedLiquidityProcessor._get_events_path
 
     def mock_get_events_path(self, protocol):
@@ -157,17 +166,18 @@ async def test_fast_validation():
     logger.info(f"  Block: {snapshot['snapshot_block']}\n")
 
     # Only check ticks that have liquidity in snapshot
-    ticks_to_check = [int(tick) for tick in snapshot['tick_data'].keys()]
+    ticks_to_check = [int(tick) for tick in snapshot["tick_data"].keys()]
 
     logger.info(f"  Checking {len(ticks_to_check)} ticks with liquidity")
 
     v3_batcher = UniswapV3TickBatcher(w3)
     from eth_utils import to_checksum_address
+
     v3_pool_checksum = to_checksum_address(V3_TEST_POOL)
 
     batch_result = await v3_batcher.fetch_tick_data(
         pool_ticks={v3_pool_checksum: ticks_to_check},
-        block_number=snapshot['snapshot_block']
+        block_number=snapshot["snapshot_block"],
     )
 
     if not batch_result.success:
@@ -180,23 +190,25 @@ async def test_fast_validation():
     logger.info("Step 6: Comparing snapshot vs live...")
     mismatches = []
 
-    for tick_str, snap_data in snapshot['tick_data'].items():
+    for tick_str, snap_data in snapshot["tick_data"].items():
         tick = int(tick_str)
         live_data = live_tick_data.get(tick)
 
-        snap_gross = snap_data.get('liquidity_gross', 0)
-        snap_net = snap_data.get('liquidity_net', 0)
+        snap_gross = snap_data.get("liquidity_gross", 0)
+        snap_net = snap_data.get("liquidity_net", 0)
         live_gross = live_data.liquidity_gross if live_data else 0
         live_net = live_data.liquidity_net if live_data else 0
 
         if snap_gross != live_gross or snap_net != live_net:
-            mismatches.append({
-                'tick': tick,
-                'snap_gross': snap_gross,
-                'snap_net': snap_net,
-                'live_gross': live_gross,
-                'live_net': live_net,
-            })
+            mismatches.append(
+                {
+                    "tick": tick,
+                    "snap_gross": snap_gross,
+                    "snap_net": snap_net,
+                    "live_gross": live_gross,
+                    "live_net": live_net,
+                }
+            )
 
     logger.info(f"  Total ticks compared: {len(ticks_to_check)}")
     logger.info(f"  Matches: {len(ticks_to_check) - len(mismatches)}")
@@ -205,16 +217,26 @@ async def test_fast_validation():
     if mismatches:
         logger.warning("\n⚠ MISMATCHES FOUND:")
         for i, m in enumerate(mismatches[:10]):
-            logger.warning(f"  {i+1}. Tick {m['tick']}")
-            logger.warning(f"     Snapshot: gross={m['snap_gross']}, net={m['snap_net']}")
-            logger.warning(f"     Live:     gross={m['live_gross']}, net={m['live_net']}")
+            logger.warning(f"  {i + 1}. Tick {m['tick']}")
+            logger.warning(
+                f"     Snapshot: gross={m['snap_gross']}, net={m['snap_net']}"
+            )
+            logger.warning(
+                f"     Live:     gross={m['live_gross']}, net={m['live_net']}"
+            )
         if len(mismatches) > 10:
             logger.warning(f"  ... and {len(mismatches) - 10} more")
 
-    match_pct = ((len(ticks_to_check) - len(mismatches)) / len(ticks_to_check) * 100) if ticks_to_check else 100
+    match_pct = (
+        ((len(ticks_to_check) - len(mismatches)) / len(ticks_to_check) * 100)
+        if ticks_to_check
+        else 100
+    )
     logger.info(f"\n  Match percentage: {match_pct:.2f}%")
 
     # Assert perfection
-    assert len(mismatches) == 0, f"Found {len(mismatches)} mismatches - snapshot doesn't match live state"
+    assert len(mismatches) == 0, (
+        f"Found {len(mismatches)} mismatches - snapshot doesn't match live state"
+    )
 
     logger.info("\n✓ VALIDATION PASSED - PERFECT MATCH!")

@@ -4,8 +4,9 @@ Test script to extract and verify whitelist data from Redis.
 
 import asyncio
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
 import redis.asyncio as redis
 
 from src.config import ConfigManager
@@ -21,7 +22,7 @@ async def extract_whitelist_from_redis():
         host=redis_config.host,
         port=redis_config.port,
         db=redis_config.db,
-        decode_responses=True
+        decode_responses=True,
     )
 
     try:
@@ -57,11 +58,8 @@ async def extract_whitelist_from_redis():
 
         # Save full whitelist
         whitelist_path = output_dir / f"whitelist_{chain}_{timestamp}.json"
-        with open(whitelist_path, 'w') as f:
-            json.dump({
-                "metadata": metadata,
-                "tokens": whitelist
-            }, f, indent=2)
+        with open(whitelist_path, "w") as f:
+            json.dump({"metadata": metadata, "tokens": whitelist}, f, indent=2)
         print(f"💾 Saved whitelist to {whitelist_path}")
 
         # Extract tokens by source
@@ -70,7 +68,7 @@ async def extract_whitelist_from_redis():
             "hyperliquid": [],
             "lighter": [],
             "top_transferred": [],
-            "multi_source": []
+            "multi_source": [],
         }
 
         for token in whitelist:
@@ -83,16 +81,20 @@ async def extract_whitelist_from_redis():
 
         # Save by source breakdown
         by_source_path = output_dir / f"whitelist_by_source_{chain}_{timestamp}.json"
-        with open(by_source_path, 'w') as f:
-            json.dump({
-                "metadata": {
-                    "chain": chain,
-                    "extracted_at": datetime.now().isoformat(),
-                    "total_tokens": len(whitelist)
+        with open(by_source_path, "w") as f:
+            json.dump(
+                {
+                    "metadata": {
+                        "chain": chain,
+                        "extracted_at": datetime.now().isoformat(),
+                        "total_tokens": len(whitelist),
+                    },
+                    "counts": {k: len(v) for k, v in by_source.items()},
+                    "tokens_by_source": by_source,
                 },
-                "counts": {k: len(v) for k, v in by_source.items()},
-                "tokens_by_source": by_source
-            }, f, indent=2)
+                f,
+                indent=2,
+            )
         print(f"💾 Saved by-source breakdown to {by_source_path}")
 
         # Print summary
@@ -102,16 +104,23 @@ async def extract_whitelist_from_redis():
 
         # Extract just addresses for easy use
         addresses_path = output_dir / f"whitelist_addresses_{chain}_{timestamp}.json"
-        with open(addresses_path, 'w') as f:
-            json.dump({
-                "total": len(whitelist),
-                "addresses": [t.get("address") for t in whitelist if t.get("address")]
-            }, f, indent=2)
+        with open(addresses_path, "w") as f:
+            json.dump(
+                {
+                    "total": len(whitelist),
+                    "addresses": [
+                        t.get("address") for t in whitelist if t.get("address")
+                    ],
+                },
+                f,
+                indent=2,
+            )
         print(f"💾 Saved addresses only to {addresses_path}")
 
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         await client.close()
@@ -119,13 +128,13 @@ async def extract_whitelist_from_redis():
 
 async def main():
     """Main entry point."""
-    print("="*80)
+    print("=" * 80)
     print("REDIS WHITELIST EXTRACTION TEST")
-    print("="*80)
+    print("=" * 80)
     await extract_whitelist_from_redis()
-    print("="*80)
+    print("=" * 80)
     print("EXTRACTION COMPLETE")
-    print("="*80)
+    print("=" * 80)
 
 
 if __name__ == "__main__":

@@ -7,13 +7,13 @@ using a pre-compiled Solidity contract via eth.call().
 
 import json
 import os
-from typing import Dict, List, Union, Optional
 from datetime import datetime, timezone
+from typing import Dict, List, Optional, Union
 
-from web3 import Web3
 from eth_abi import decode
+from web3 import Web3
 
-from .base import ContractBatcher, BatchResult, BatchConfig, BatchError
+from .base import BatchConfig, BatchError, BatchResult, ContractBatcher
 
 
 class UniswapV3DataBatcher(ContractBatcher):
@@ -28,7 +28,7 @@ class UniswapV3DataBatcher(ContractBatcher):
         self,
         web3: Web3,
         chain_id: Optional[int] = None,
-        config: Optional[BatchConfig] = None
+        config: Optional[BatchConfig] = None,
     ):
         """
         Initialize the V3 data batcher.
@@ -61,7 +61,7 @@ class UniswapV3DataBatcher(ContractBatcher):
                 os.path.dirname(__file__),
                 "contracts",
                 "ethereum",
-                "UniswapV3DataGetter.json"
+                "UniswapV3DataGetter.json",
             )
 
             # Load and parse contract JSON
@@ -96,6 +96,7 @@ class UniswapV3DataBatcher(ContractBatcher):
 
             # Encode constructor arguments (address[] pool addresses)
             from eth_abi import encode
+
             encoded_args = encode(["address[]"], [address_list])
 
             # Combine bytecode with encoded arguments
@@ -108,9 +109,7 @@ class UniswapV3DataBatcher(ContractBatcher):
             raise BatchError(f"Failed to prepare V3 call data: {e}")
 
     async def batch_call(
-        self,
-        pool_addresses: List[str],
-        block_identifier: Union[int, str] = 'latest'
+        self, pool_addresses: List[str], block_identifier: Union[int, str] = "latest"
     ) -> BatchResult:
         """
         Fetch data for multiple Uniswap V3 pools.
@@ -127,9 +126,7 @@ class UniswapV3DataBatcher(ContractBatcher):
             validated_addresses = self._validate_addresses(pool_addresses)
             if not validated_addresses:
                 return BatchResult(
-                    success=False,
-                    data={},
-                    error="No valid pool addresses provided"
+                    success=False, data={}, error="No valid pool addresses provided"
                 )
 
             # Get current block number
@@ -141,24 +138,18 @@ class UniswapV3DataBatcher(ContractBatcher):
             )
 
             # Decode the response
-            pool_data = self._decode_v3_response(
-                raw_response, validated_addresses
-            )
+            pool_data = self._decode_v3_response(raw_response, validated_addresses)
 
             return BatchResult(
                 success=True,
                 data=pool_data,
                 block_number=current_block,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
             )
 
         except Exception as e:
             self.logger.error(f"V3 batch call failed: {e}")
-            return BatchResult(
-                success=False,
-                data={},
-                error=str(e)
-            )
+            return BatchResult(success=False, data={}, error=str(e))
 
     def _validate_addresses(self, addresses: List[str]) -> List[str]:
         """
@@ -192,9 +183,7 @@ class UniswapV3DataBatcher(ContractBatcher):
         return validated
 
     async def _execute_v3_batch_with_retry(
-        self,
-        pool_addresses: List[str],
-        block_identifier: Union[int, str] = 'latest'
+        self, pool_addresses: List[str], block_identifier: Union[int, str] = "latest"
     ) -> bytes:
         """
         Execute V3 batch call with retry logic.
@@ -206,6 +195,7 @@ class UniswapV3DataBatcher(ContractBatcher):
         Returns:
             Raw response bytes
         """
+
         async def _call():
             call_data = self._prepare_call_data(pool_addresses)
             return self._make_batch_call(call_data, block_identifier)
@@ -213,9 +203,7 @@ class UniswapV3DataBatcher(ContractBatcher):
         return await self._retry_operation(_call)
 
     def _decode_v3_response(
-        self,
-        raw_response: bytes,
-        pool_addresses: List[str]
+        self, raw_response: bytes, pool_addresses: List[str]
     ) -> Dict[str, Dict[str, any]]:
         """
         Decode the raw response from the V3 batch call.
@@ -240,23 +228,23 @@ class UniswapV3DataBatcher(ContractBatcher):
 
                     # Decode slot0 structure: sqrtPriceX96 (20 bytes) + tick (3 bytes, signed) + rest
                     sqrtPriceX96_bytes = slot0_bytes[0:20]  # First 160 bits (20 bytes)
-                    sqrtPriceX96 = int.from_bytes(sqrtPriceX96_bytes, byteorder='big')
+                    sqrtPriceX96 = int.from_bytes(sqrtPriceX96_bytes, byteorder="big")
 
                     # Tick is a signed 24-bit integer at bytes 20-23
                     tick_bytes = slot0_bytes[20:23]
-                    tick = int.from_bytes(tick_bytes, byteorder='big', signed=True)
+                    tick = int.from_bytes(tick_bytes, byteorder="big", signed=True)
 
                     # Extract liquidity as full uint256 (the contract returns it right-aligned)
-                    liquidity_value = int.from_bytes(liquidity_bytes, byteorder='big')
+                    liquidity_value = int.from_bytes(liquidity_bytes, byteorder="big")
                     liquidity = str(liquidity_value)
 
                     # Parse slot0 data (contains sqrtPriceX96, tick, etc.)
                     # This is a packed encoding from the V3 contract
                     decoded_pools[pool_address.lower()] = {
-                        'liquidity': liquidity,
-                        'sqrtPriceX96': sqrtPriceX96,
-                        'tick': tick,
-                        'block_number': block_number
+                        "liquidity": liquidity,
+                        "sqrtPriceX96": sqrtPriceX96,
+                        "tick": tick,
+                        "block_number": block_number,
                     }
 
             return decoded_pools
@@ -266,9 +254,7 @@ class UniswapV3DataBatcher(ContractBatcher):
             raise BatchError(f"Failed to decode V3 response: {e}")
 
     async def fetch_pools_chunked(
-        self,
-        pool_addresses: List[str],
-        block_identifier: Union[int, str] = 'latest'
+        self, pool_addresses: List[str], block_identifier: Union[int, str] = "latest"
     ) -> Dict[str, Dict[str, any]]:
         """
         Fetch pool data for a large number of pools using chunking.
@@ -287,21 +273,31 @@ class UniswapV3DataBatcher(ContractBatcher):
         self.failed_pools = []  # Track failed pools
         chunks = self._chunk_addresses(pool_addresses)
 
-        self.logger.info(f"Fetching V3 data for {len(pool_addresses)} pools in {len(chunks)} chunks")
+        self.logger.info(
+            f"Fetching V3 data for {len(pool_addresses)} pools in {len(chunks)} chunks"
+        )
 
         for i, chunk in enumerate(chunks):
-            self.logger.debug(f"Processing chunk {i + 1}/{len(chunks)} with {len(chunk)} pools")
+            self.logger.debug(
+                f"Processing chunk {i + 1}/{len(chunks)} with {len(chunk)} pools"
+            )
 
             result = await self.batch_call(chunk, block_identifier)
 
             if result.success:
                 all_pools.update(result.data)
             else:
-                self.logger.warning(f"V3 chunk {i + 1} failed: {result.error}, splitting into smaller batches...")
+                self.logger.warning(
+                    f"V3 chunk {i + 1} failed: {result.error}, splitting into smaller batches..."
+                )
                 # Retry with smaller batch size to isolate bad addresses
-                pools_recovered = await self._retry_failed_chunk(chunk, block_identifier)
+                pools_recovered = await self._retry_failed_chunk(
+                    chunk, block_identifier
+                )
                 all_pools.update(pools_recovered)
-                self.logger.info(f"  Recovered {len(pools_recovered)}/{len(chunk)} pools from failed chunk")
+                self.logger.info(
+                    f"  Recovered {len(pools_recovered)}/{len(chunk)} pools from failed chunk"
+                )
 
         # Write failed pools to file
         if self.failed_pools:
@@ -312,8 +308,8 @@ class UniswapV3DataBatcher(ContractBatcher):
     async def _retry_failed_chunk(
         self,
         pool_addresses: List[str],
-        block_identifier: Union[int, str] = 'latest',
-        min_batch_size: int = 10
+        block_identifier: Union[int, str] = "latest",
+        min_batch_size: int = 10,
     ) -> Dict[str, Dict[str, any]]:
         """
         Retry a failed chunk by splitting into smaller batches.
@@ -331,7 +327,7 @@ class UniswapV3DataBatcher(ContractBatcher):
         recovered_pools = {}
 
         for i in range(0, len(pool_addresses), chunk_size):
-            mini_chunk = pool_addresses[i:i + chunk_size]
+            mini_chunk = pool_addresses[i : i + chunk_size]
 
             result = await self.batch_call(mini_chunk, block_identifier)
 
@@ -340,9 +336,7 @@ class UniswapV3DataBatcher(ContractBatcher):
             elif len(mini_chunk) > min_batch_size:
                 # Recursively split further if still too large
                 sub_pools = await self._retry_failed_chunk(
-                    mini_chunk,
-                    block_identifier,
-                    min_batch_size
+                    mini_chunk, block_identifier, min_batch_size
                 )
                 recovered_pools.update(sub_pools)
             else:
@@ -373,21 +367,23 @@ class UniswapV3DataBatcher(ContractBatcher):
         data = {
             "timestamp": datetime.now().isoformat(),
             "total_failed": len(self.failed_pools),
-            "failed_pools": self.failed_pools
+            "failed_pools": self.failed_pools,
         }
 
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(data, f, indent=2)
 
-        self.logger.warning(f"💾 Wrote {len(self.failed_pools)} failed V3 pools to {output_file}")
+        self.logger.warning(
+            f"💾 Wrote {len(self.failed_pools)} failed V3 pools to {output_file}"
+        )
 
 
 # Convenience function for easy usage
 async def fetch_uniswap_v3_data(
     web3: Web3,
     pool_addresses: List[str],
-    block_identifier: Union[int, str] = 'latest',
-    batch_size: int = 50
+    block_identifier: Union[int, str] = "latest",
+    batch_size: int = 50,
 ) -> Dict[str, Dict[str, any]]:
     """
     Convenience function to fetch Uniswap V3 pool data.

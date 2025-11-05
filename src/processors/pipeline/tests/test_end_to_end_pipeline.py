@@ -7,12 +7,13 @@ This test suite shows how to:
 3. Generate comprehensive whitelists for each chain
 """
 
-import pytest
+from typing import Any, Dict, List
 from unittest.mock import patch
-from typing import List, Dict, Any
 
+import pytest
+
+from ...fetchers.exchange_fetchers import ExchangeToken, HyperliquidFetcher
 from ..token_matching_processor import TokenMatchingProcessor
-from ...fetchers.exchange_fetchers import HyperliquidFetcher, ExchangeToken
 
 
 class TestEndToEndPipeline:

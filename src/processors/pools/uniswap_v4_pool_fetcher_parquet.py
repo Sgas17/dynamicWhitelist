@@ -4,18 +4,19 @@ import sys
 # Add the project root to the Python path
 project_root = pathlib.Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
-import eth_abi.abi as eth_abi   
-import polars
-import ujson
-from eth_utils.address import to_checksum_address
-from hexbytes import HexBytes
-from eth_abi.abi import decode
 # Use the new modular storage system
 import asyncio
-from src.core.storage import StorageManager
+
+import eth_abi.abi as eth_abi
+import polars
+import ujson
+from eth_abi.abi import decode
+from eth_utils.address import to_checksum_address
+from hexbytes import HexBytes
 
 # Import config system
 from src.config.manager import ConfigManager
+from src.core.storage import StorageManager
 
 # Initialize config
 config = ConfigManager()
@@ -38,12 +39,14 @@ except Exception:
     POOL_MANAGER_ADDRESS = "0x000000000004444c5dc75cB358380D2e3dE08A90"
 LP_TYPE = "UniswapV4"
 
+
 def to_serializable(val):
     if val is None:
         return None
     if isinstance(val, (bytes, HexBytes)):
-        return '0x' + val.hex()
+        return "0x" + val.hex()
     return str(val)
+
 
 try:
     with open(POOL_FILE, "r") as file:
@@ -96,8 +99,6 @@ for event in poolcreated_events.rows(named=True):
     )
     block_number = event["block_number"]
 
-
-
     lp_data.append(
         {
             "address": pool_id,
@@ -110,7 +111,7 @@ for event in poolcreated_events.rows(named=True):
             "type": LP_TYPE,
             "additional_data": {
                 "hooks_address": to_serializable(hooks_address),
-        },
+            },
         }
     )
 
@@ -121,14 +122,19 @@ lp_data.append({"block_number": last_event_block, "number_of_pools": len(lp_data
 async def store_pools_to_db():
     print("Storing pools to database...")
     # Filter out the metadata entry (last item) before storing to database
-    pool_data_for_db = [pool for pool in lp_data if isinstance(pool, dict) and 'address' in pool]
+    pool_data_for_db = [
+        pool for pool in lp_data if isinstance(pool, dict) and "address" in pool
+    ]
 
     async with StorageManager() as storage:
         try:
-            count = await storage.postgres.store_pools_batch(pool_data_for_db, CHAIN_NAME, EXCHANGE_NAME)
+            count = await storage.postgres.store_pools_batch(
+                pool_data_for_db, CHAIN_NAME, EXCHANGE_NAME
+            )
             print(f"Successfully stored {count} V4 pools to database")
         except Exception as e:
             print(f"Error storing pools to database: {e}")
+
 
 # Run the async storage operation
 asyncio.run(store_pools_to_db())

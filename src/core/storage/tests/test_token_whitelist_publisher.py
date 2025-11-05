@@ -8,9 +8,10 @@ Tests token whitelist publishing to NATS topics including:
 - Filter counting
 """
 
-import pytest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
+
+import pytest
 
 from src.core.storage.token_whitelist_publisher import TokenWhitelistNatsPublisher
 
@@ -23,20 +24,20 @@ def sample_tokens():
             "symbol": "USDC",
             "decimals": 6,
             "name": "USD Coin",
-            "filters": ["cross_chain", "top_transferred"]
+            "filters": ["cross_chain", "top_transferred"],
         },
         "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": {
             "symbol": "WETH",
             "decimals": 18,
             "name": "Wrapped Ether",
-            "filters": ["cross_chain", "hyperliquid"]
+            "filters": ["cross_chain", "hyperliquid"],
         },
         "0xdAC17F958D2ee523a2206206994597C13D831ec7": {
             "symbol": "USDT",
             "decimals": 6,
             "name": "Tether USD",
-            "filters": ["top_transferred"]
-        }
+            "filters": ["top_transferred"],
+        },
     }
 
 
@@ -52,13 +53,13 @@ def mock_nats_client():
 @pytest.mark.asyncio
 async def test_publish_full_whitelist(sample_tokens, mock_nats_client):
     """Test publishing complete token whitelist."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             results = await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=sample_tokens,
                 publish_full=True,
-                publish_deltas=False
+                publish_deltas=False,
             )
 
             # Verify full topic was published
@@ -74,14 +75,14 @@ async def test_publish_full_whitelist(sample_tokens, mock_nats_client):
 @pytest.mark.asyncio
 async def test_publish_add_delta(sample_tokens, mock_nats_client):
     """Test publishing added tokens delta."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             # First publish - should publish add delta
             results = await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=sample_tokens,
                 publish_full=False,
-                publish_deltas=True
+                publish_deltas=True,
             )
 
             # All tokens are new, so add should succeed
@@ -93,29 +94,27 @@ async def test_publish_add_delta(sample_tokens, mock_nats_client):
 @pytest.mark.asyncio
 async def test_publish_remove_delta(sample_tokens, mock_nats_client):
     """Test publishing removed tokens delta."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             # First publish - establish baseline
             await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=sample_tokens,
                 publish_full=False,
-                publish_deltas=True
+                publish_deltas=True,
             )
 
             # Reset mock
             mock_nats_client.publish.reset_mock()
 
             # Second publish with fewer tokens
-            reduced_tokens = {
-                k: v for k, v in list(sample_tokens.items())[:2]
-            }
+            reduced_tokens = {k: v for k, v in list(sample_tokens.items())[:2]}
 
             results = await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=reduced_tokens,
                 publish_full=False,
-                publish_deltas=True
+                publish_deltas=True,
             )
 
             # Should publish remove delta
@@ -127,13 +126,13 @@ async def test_publish_remove_delta(sample_tokens, mock_nats_client):
 @pytest.mark.asyncio
 async def test_filter_counts(sample_tokens, mock_nats_client):
     """Test filter counting in metadata."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             results = await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=sample_tokens,
                 publish_full=True,
-                publish_deltas=False
+                publish_deltas=False,
             )
 
             assert results["full"] is True
@@ -143,6 +142,7 @@ async def test_filter_counts(sample_tokens, mock_nats_client):
             payload = call_args[1]
 
             import json
+
             message = json.loads(payload.decode())
 
             # Check metadata has filter counts
@@ -159,13 +159,10 @@ async def test_filter_counts(sample_tokens, mock_nats_client):
 @pytest.mark.asyncio
 async def test_empty_tokens(mock_nats_client):
     """Test handling empty token list."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             results = await publisher.publish_token_whitelist(
-                chain="ethereum",
-                tokens={},
-                publish_full=True,
-                publish_deltas=True
+                chain="ethereum", tokens={}, publish_full=True, publish_deltas=True
             )
 
             # Should return False for empty list
@@ -178,7 +175,7 @@ async def test_empty_tokens(mock_nats_client):
 @pytest.mark.asyncio
 async def test_connection_failure():
     """Test handling NATS connection failure."""
-    with patch('nats.connect', side_effect=Exception("Connection failed")):
+    with patch("nats.connect", side_effect=Exception("Connection failed")):
         with pytest.raises(Exception):
             async with TokenWhitelistNatsPublisher() as publisher:
                 pass
@@ -189,13 +186,13 @@ async def test_publish_failure(sample_tokens, mock_nats_client):
     """Test handling publish failure."""
     mock_nats_client.publish.side_effect = Exception("Publish failed")
 
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             results = await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=sample_tokens,
                 publish_full=True,
-                publish_deltas=False
+                publish_deltas=False,
             )
 
             # Should return False on failure
@@ -205,14 +202,14 @@ async def test_publish_failure(sample_tokens, mock_nats_client):
 @pytest.mark.asyncio
 async def test_multiple_chains(sample_tokens, mock_nats_client):
     """Test publishing to multiple chains independently."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             # Publish to ethereum
             results1 = await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=sample_tokens,
                 publish_full=True,
-                publish_deltas=True
+                publish_deltas=True,
             )
 
             # Publish to base
@@ -220,7 +217,7 @@ async def test_multiple_chains(sample_tokens, mock_nats_client):
                 chain="base",
                 tokens=sample_tokens,
                 publish_full=True,
-                publish_deltas=True
+                publish_deltas=True,
             )
 
             # Both should succeed
@@ -238,21 +235,17 @@ async def test_multiple_chains(sample_tokens, mock_nats_client):
 @pytest.mark.asyncio
 async def test_delta_tracking_across_updates(sample_tokens, mock_nats_client):
     """Test delta tracking across multiple updates."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             # First update
             await publisher.publish_token_whitelist(
-                chain="ethereum",
-                tokens=sample_tokens,
-                publish_deltas=True
+                chain="ethereum", tokens=sample_tokens, publish_deltas=True
             )
 
             # Second update with same tokens
             mock_nats_client.publish.reset_mock()
             results = await publisher.publish_token_whitelist(
-                chain="ethereum",
-                tokens=sample_tokens,
-                publish_deltas=True
+                chain="ethereum", tokens=sample_tokens, publish_deltas=True
             )
 
             # No adds or removes - only full
@@ -265,13 +258,13 @@ async def test_delta_tracking_across_updates(sample_tokens, mock_nats_client):
 @pytest.mark.asyncio
 async def test_token_metadata_structure(sample_tokens, mock_nats_client):
     """Test published token metadata structure."""
-    with patch('nats.connect', return_value=mock_nats_client):
+    with patch("nats.connect", return_value=mock_nats_client):
         async with TokenWhitelistNatsPublisher() as publisher:
             await publisher.publish_token_whitelist(
                 chain="ethereum",
                 tokens=sample_tokens,
                 publish_full=True,
-                publish_deltas=False  # Only test full message
+                publish_deltas=False,  # Only test full message
             )
 
             # Extract published message
@@ -279,6 +272,7 @@ async def test_token_metadata_structure(sample_tokens, mock_nats_client):
             payload = call_args[1]
 
             import json
+
             message = json.loads(payload.decode())
 
             # Verify message structure

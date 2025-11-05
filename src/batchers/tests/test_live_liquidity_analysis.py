@@ -12,21 +12,23 @@ This module implements comprehensive liquidity analysis by:
 Uses correct tick mathematics: price = 1.0001^tick
 """
 
-import pytest
 import logging
 import math
-from typing import List, Dict, Tuple
-from web3 import Web3
-from eth_typing import ChecksumAddress
 from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
+import pytest
+from eth_typing import ChecksumAddress
+from web3 import Web3
 
 # Set logging level for this module to see detailed output
 logging.getLogger().setLevel(logging.INFO)
 
 from src.config import ConfigManager
-from ..uniswap_v3_ticks import UniswapV3TickBatcher, UniswapV3BitmapBatcher
-from ..v4_smart_analyzer import V4SmartLiquidityAnalyzer
+
 from ..base import BatchConfig, BatchError
+from ..uniswap_v3_ticks import UniswapV3BitmapBatcher, UniswapV3TickBatcher
+from ..v4_smart_analyzer import V4SmartLiquidityAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PoolLiquidityAnalysis:
     """Results of liquidity analysis for a pool."""
+
     pool_address: str
     pool_name: str
     current_tick: int
@@ -59,7 +62,9 @@ class TickMath:
     """
 
     @staticmethod
-    def calculate_tick_for_percentage_change(current_tick: int, percentage: float) -> int:
+    def calculate_tick_for_percentage_change(
+        current_tick: int, percentage: float
+    ) -> int:
         """
         Calculate the tick difference for a given percentage price change.
 
@@ -86,9 +91,7 @@ class TickMath:
 
     @staticmethod
     def calculate_tick_range_for_percentage(
-        current_tick: int,
-        percentage: float,
-        tick_spacing: int
+        current_tick: int, percentage: float, tick_spacing: int
     ) -> Tuple[int, int]:
         """
         Calculate the tick range for ±percentage from current tick.
@@ -101,7 +104,9 @@ class TickMath:
         Returns:
             Tuple of (lower_tick, upper_tick) aligned to tick spacing
         """
-        tick_diff = TickMath.calculate_tick_for_percentage_change(current_tick, percentage)
+        tick_diff = TickMath.calculate_tick_for_percentage_change(
+            current_tick, percentage
+        )
 
         # Calculate bounds
         lower_tick = current_tick - tick_diff
@@ -127,8 +132,8 @@ def web3_connection():
     try:
         config_manager = ConfigManager()
         # Get Ethereum chain config
-        chain_config = config_manager.chains.get_chain_config('ethereum')
-        rpc_url = chain_config['rpc_url']
+        chain_config = config_manager.chains.get_chain_config("ethereum")
+        rpc_url = chain_config["rpc_url"]
 
         logger.info(f"Connecting to: {rpc_url}")
         web3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -162,7 +167,7 @@ def v3_pools():
             "name": "WBTC/WETH 0.3%",
             "tick_spacing": 60,
             "fee": 3000,
-        }
+        },
     }
 
 
@@ -195,7 +200,7 @@ class TestLiveLiquidityAnalysis:
                     tick_batcher=tick_batcher,
                     bitmap_batcher=bitmap_batcher,
                     percentage_range=percentage_range,
-                    web3=web3_connection
+                    web3=web3_connection,
                 )
 
                 # Print detailed analysis
@@ -203,11 +208,19 @@ class TestLiveLiquidityAnalysis:
 
                 # Assertions
                 assert analysis.current_tick is not None, "Should have current tick"
-                assert analysis.current_sqrt_price > 0, "Should have positive sqrt price"
-                assert analysis.current_liquidity >= 0, "Should have non-negative liquidity"
+                assert analysis.current_sqrt_price > 0, (
+                    "Should have positive sqrt price"
+                )
+                assert analysis.current_liquidity >= 0, (
+                    "Should have non-negative liquidity"
+                )
                 assert len(analysis.word_positions) > 0, "Should have word positions"
-                assert len(analysis.initialized_ticks) >= 0, "Should have initialized ticks list"
-                assert analysis.total_liquidity_in_range >= 0, "Should have non-negative total liquidity"
+                assert len(analysis.initialized_ticks) >= 0, (
+                    "Should have initialized ticks list"
+                )
+                assert analysis.total_liquidity_in_range >= 0, (
+                    "Should have non-negative total liquidity"
+                )
                 assert analysis.block_number > 0, "Should have valid block number"
 
                 logger.info(f"✅ Successfully analyzed {pool_info['name']}")
@@ -228,7 +241,7 @@ class TestLiveLiquidityAnalysis:
                 analysis = await self._analyze_v4_pool_liquidity(
                     pool_id=pool_id,
                     analyzer=analyzer,
-                    percentage_range=percentage_range
+                    percentage_range=percentage_range,
                 )
 
                 # Print detailed analysis
@@ -236,23 +249,35 @@ class TestLiveLiquidityAnalysis:
                 print(f"   Current Tick: {analysis.current_tick}")
                 print(f"   Current sqrt Price: {analysis.current_sqrt_price}")
                 print(f"   Current Liquidity: {analysis.current_liquidity}")
-                print(f"   Range: ±{percentage_range}% → Ticks [{analysis.analyzed_range}]")
+                print(
+                    f"   Range: ±{percentage_range}% → Ticks [{analysis.analyzed_range}]"
+                )
                 print(f"   Initialized Ticks Found: {analysis.total_initialized_ticks}")
-                print(f"   Total Swappable Liquidity: {analysis.total_swappable_liquidity:,}")
-                print(f"   Average Liquidity in Range: {analysis.total_swappable_liquidity / max(1, analysis.total_initialized_ticks):,.0f}")
+                print(
+                    f"   Total Swappable Liquidity: {analysis.total_swappable_liquidity:,}"
+                )
+                print(
+                    f"   Average Liquidity in Range: {analysis.total_swappable_liquidity / max(1, analysis.total_initialized_ticks):,.0f}"
+                )
                 print(f"   Block Number: {analysis.block_number}")
 
                 # Assertions
-                assert hasattr(analysis, 'current_tick'), "Should have current tick"
-                assert hasattr(analysis, 'current_sqrt_price'), "Should have sqrt price"
-                assert hasattr(analysis, 'current_liquidity'), "Should have current liquidity"
-                assert hasattr(analysis, 'total_swappable_liquidity'), "Should have total liquidity"
-                assert hasattr(analysis, 'block_number'), "Should have block number"
+                assert hasattr(analysis, "current_tick"), "Should have current tick"
+                assert hasattr(analysis, "current_sqrt_price"), "Should have sqrt price"
+                assert hasattr(analysis, "current_liquidity"), (
+                    "Should have current liquidity"
+                )
+                assert hasattr(analysis, "total_swappable_liquidity"), (
+                    "Should have total liquidity"
+                )
+                assert hasattr(analysis, "block_number"), "Should have block number"
 
                 logger.info(f"✅ Successfully analyzed V4 pool {pool_id[:10]}...")
 
             except BatchError as e:
-                logger.warning(f"V4 analysis failed (expected if contracts not deployed): {e}")
+                logger.warning(
+                    f"V4 analysis failed (expected if contracts not deployed): {e}"
+                )
                 pytest.skip(f"V4 analysis not available: {e}")
 
     async def _analyze_v3_pool_liquidity(
@@ -262,7 +287,7 @@ class TestLiveLiquidityAnalysis:
         tick_batcher: UniswapV3TickBatcher,
         bitmap_batcher: UniswapV3BitmapBatcher,
         percentage_range: float,
-        web3: Web3
+        web3: Web3,
     ) -> PoolLiquidityAnalysis:
         """Perform complete V3 pool liquidity analysis."""
 
@@ -280,19 +305,19 @@ class TestLiveLiquidityAnalysis:
                         {"name": "observationCardinality", "type": "uint16"},
                         {"name": "observationCardinalityNext", "type": "uint16"},
                         {"name": "feeProtocol", "type": "uint8"},
-                        {"name": "unlocked", "type": "bool"}
+                        {"name": "unlocked", "type": "bool"},
                     ],
                     "stateMutability": "view",
-                    "type": "function"
+                    "type": "function",
                 },
                 {
                     "inputs": [],
                     "name": "liquidity",
                     "outputs": [{"name": "", "type": "uint128"}],
                     "stateMutability": "view",
-                    "type": "function"
-                }
-            ]
+                    "type": "function",
+                },
+            ],
         )
 
         slot0_data = pool_contract.functions.slot0().call()
@@ -307,7 +332,9 @@ class TestLiveLiquidityAnalysis:
         )
 
         # Step 3: Calculate word positions for bitmap fetching
-        word_positions = bitmap_batcher.calculate_word_positions(lower_tick, upper_tick, tick_spacing)
+        word_positions = bitmap_batcher.calculate_word_positions(
+            lower_tick, upper_tick, tick_spacing
+        )
 
         # Step 4: Fetch bitmaps for the calculated range
         pool_word_positions = {Web3.to_checksum_address(pool_address): word_positions}
@@ -318,12 +345,13 @@ class TestLiveLiquidityAnalysis:
 
         # Step 5: Find initialized ticks from bitmaps
         pool_bitmaps = list(bitmap_result.data.values())[0]
-        initialized_ticks = bitmap_batcher.find_initialized_ticks(pool_bitmaps, tick_spacing)
+        initialized_ticks = bitmap_batcher.find_initialized_ticks(
+            pool_bitmaps, tick_spacing
+        )
 
         # Filter ticks to our range
         initialized_ticks = [
-            tick for tick in initialized_ticks
-            if lower_tick <= tick <= upper_tick
+            tick for tick in initialized_ticks if lower_tick <= tick <= upper_tick
         ]
 
         # Step 6: Batch fetch liquidity data for initialized ticks
@@ -338,7 +366,10 @@ class TestLiveLiquidityAnalysis:
                 pool_tick_data = list(tick_result.data.values())[0]
                 for tick, tick_info in pool_tick_data.items():
                     if tick_info.is_initialized:
-                        tick_liquidity_data[tick] = (tick_info.liquidity_gross, tick_info.liquidity_net)
+                        tick_liquidity_data[tick] = (
+                            tick_info.liquidity_gross,
+                            tick_info.liquidity_net,
+                        )
                         total_liquidity += tick_info.liquidity_gross
 
         # Calculate average liquidity
@@ -357,47 +388,56 @@ class TestLiveLiquidityAnalysis:
             tick_liquidity_data=tick_liquidity_data,
             total_liquidity_in_range=total_liquidity,
             average_liquidity_in_range=avg_liquidity,
-            block_number=bitmap_result.block_number
+            block_number=bitmap_result.block_number,
         )
 
     async def _analyze_v4_pool_liquidity(
-        self,
-        pool_id: str,
-        analyzer: V4SmartLiquidityAnalyzer,
-        percentage_range: float
+        self, pool_id: str, analyzer: V4SmartLiquidityAnalyzer, percentage_range: float
     ):
         """Perform complete V4 pool liquidity analysis."""
         return await analyzer.analyze_pool_liquidity(
             pool_id=pool_id,
             percentage_range=percentage_range,
             min_liquidity=1000,
-            tick_spacing=60
+            tick_spacing=60,
         )
 
     def _print_liquidity_analysis(self, analysis: PoolLiquidityAnalysis):
         """Print detailed liquidity analysis results."""
-        print(f"\n✅ {analysis.pool_name} ({analysis.pool_address}) Liquidity Analysis:")
+        print(
+            f"\n✅ {analysis.pool_name} ({analysis.pool_address}) Liquidity Analysis:"
+        )
         print(f"   Current Tick: {analysis.current_tick}")
         print(f"   Current sqrt Price: {analysis.current_sqrt_price}")
         print(f"   Current Liquidity: {analysis.current_liquidity:,}")
-        print(f"   Range: ±{analysis.percentage_range}% → Ticks [{analysis.tick_range[0]}, {analysis.tick_range[1]}]")
+        print(
+            f"   Range: ±{analysis.percentage_range}% → Ticks [{analysis.tick_range[0]}, {analysis.tick_range[1]}]"
+        )
 
         range_size = analysis.tick_range[1] - analysis.tick_range[0]
         print(f"   Tick Range Size: {range_size} ticks")
 
-        print(f"   Word Positions: {len(analysis.word_positions)} words {analysis.word_positions[:5]}{'...' if len(analysis.word_positions) > 5 else ''}")
+        print(
+            f"   Word Positions: {len(analysis.word_positions)} words {analysis.word_positions[:5]}{'...' if len(analysis.word_positions) > 5 else ''}"
+        )
         print(f"   Initialized Ticks Found: {len(analysis.initialized_ticks)}")
         print(f"   Active Liquidity Ticks: {len(analysis.tick_liquidity_data)}")
         print(f"   Total Liquidity in Range: {analysis.total_liquidity_in_range:,}")
-        print(f"   Average Liquidity per Tick: {analysis.average_liquidity_in_range:,.0f}")
+        print(
+            f"   Average Liquidity per Tick: {analysis.average_liquidity_in_range:,.0f}"
+        )
         print(f"   Block Number: {analysis.block_number}")
 
         # Show sample ticks with liquidity
         if analysis.tick_liquidity_data:
             print(f"   Sample Active Ticks:")
-            for i, (tick, (gross, net)) in enumerate(list(analysis.tick_liquidity_data.items())[:5]):
+            for i, (tick, (gross, net)) in enumerate(
+                list(analysis.tick_liquidity_data.items())[:5]
+            ):
                 distance_from_current = abs(tick - analysis.current_tick)
-                print(f"     Tick {tick}: Gross={gross:,}, Net={net:,}, Distance={distance_from_current}")
+                print(
+                    f"     Tick {tick}: Gross={gross:,}, Net={net:,}, Distance={distance_from_current}"
+                )
                 if i >= 4 and len(analysis.tick_liquidity_data) > 5:
                     print(f"     ... and {len(analysis.tick_liquidity_data) - 5} more")
                     break
@@ -415,24 +455,40 @@ class TestLiveLiquidityAnalysis:
         ]
 
         for current_tick, percentage, description in test_cases:
-            tick_diff = TickMath.calculate_tick_for_percentage_change(current_tick, percentage)
-            lower_tick, upper_tick = TickMath.calculate_tick_range_for_percentage(current_tick, percentage, 60)
+            tick_diff = TickMath.calculate_tick_for_percentage_change(
+                current_tick, percentage
+            )
+            lower_tick, upper_tick = TickMath.calculate_tick_range_for_percentage(
+                current_tick, percentage, 60
+            )
 
             # Verify the mathematics
-            current_price = 1.0001 ** current_tick
+            current_price = 1.0001**current_tick
             expected_upper_price = current_price * (1 + percentage / 100)
             expected_lower_price = current_price * (1 - percentage / 100)
 
-            actual_upper_price = 1.0001 ** upper_tick
-            actual_lower_price = 1.0001 ** lower_tick
+            actual_upper_price = 1.0001**upper_tick
+            actual_lower_price = 1.0001**lower_tick
 
-            upper_error = abs(actual_upper_price - expected_upper_price) / expected_upper_price * 100
-            lower_error = abs(actual_lower_price - expected_lower_price) / expected_lower_price * 100
+            upper_error = (
+                abs(actual_upper_price - expected_upper_price)
+                / expected_upper_price
+                * 100
+            )
+            lower_error = (
+                abs(actual_lower_price - expected_lower_price)
+                / expected_lower_price
+                * 100
+            )
 
             print(f"✅ {description}:")
             print(f"   Current Tick: {current_tick}, Tick Diff: ±{tick_diff}")
-            print(f"   Range: [{lower_tick}, {upper_tick}] ({upper_tick - lower_tick} ticks)")
-            print(f"   Price Errors: Upper={upper_error:.4f}%, Lower={lower_error:.4f}%")
+            print(
+                f"   Range: [{lower_tick}, {upper_tick}] ({upper_tick - lower_tick} ticks)"
+            )
+            print(
+                f"   Price Errors: Upper={upper_error:.4f}%, Lower={lower_error:.4f}%"
+            )
 
             # Allow some error due to tick spacing alignment and rounding
             # Tick spacing alignment can cause up to 1% error for larger ranges
@@ -461,19 +517,25 @@ class TestLiveLiquidityAnalysis:
                     tick_batcher=tick_batcher,
                     bitmap_batcher=bitmap_batcher,
                     percentage_range=percentage,
-                    web3=web3_connection
+                    web3=web3_connection,
                 )
 
                 print(f"\n✅ {pool_info['name']} @ ±{percentage}%:")
-                print(f"   Range: [{analysis.tick_range[0]}, {analysis.tick_range[1]}] ({analysis.tick_range[1] - analysis.tick_range[0]} ticks)")
+                print(
+                    f"   Range: [{analysis.tick_range[0]}, {analysis.tick_range[1]}] ({analysis.tick_range[1] - analysis.tick_range[0]} ticks)"
+                )
                 print(f"   Initialized Ticks: {len(analysis.initialized_ticks)}")
                 print(f"   Active Liquidity Ticks: {len(analysis.tick_liquidity_data)}")
-                print(f"   Average Liquidity: {analysis.average_liquidity_in_range:,.0f}")
+                print(
+                    f"   Average Liquidity: {analysis.average_liquidity_in_range:,.0f}"
+                )
 
                 # Verify range increases with percentage
                 range_size = analysis.tick_range[1] - analysis.tick_range[0]
                 expected_min_range = int(percentage * 50)  # Rough estimate
-                assert range_size >= expected_min_range, f"Range too small for {percentage}%"
+                assert range_size >= expected_min_range, (
+                    f"Range too small for {percentage}%"
+                )
 
             except Exception as e:
                 logger.error(f"Failed analysis for ±{percentage}%: {e}")

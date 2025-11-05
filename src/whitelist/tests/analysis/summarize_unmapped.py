@@ -68,14 +68,14 @@ def main():
     }
     other_tokens = set(both_unmapped) - major_l1_tokens - defi_tokens - meme_tokens
 
-    print(f"🔷 Major L1/Alt Chains ({len(major_l1_tokens & set(both_unmapped))} tokens):")
+    print(
+        f"🔷 Major L1/Alt Chains ({len(major_l1_tokens & set(both_unmapped))} tokens):"
+    )
     for token in sorted(major_l1_tokens & set(both_unmapped)):
         print(f"  • {token}")
     print()
 
-    print(
-        f"💼 DeFi/Infrastructure ({len(defi_tokens & set(both_unmapped))} tokens):"
-    )
+    print(f"💼 DeFi/Infrastructure ({len(defi_tokens & set(both_unmapped))} tokens):")
     for token in sorted(defi_tokens & set(both_unmapped)):
         print(f"  • {token}")
     print()
@@ -96,13 +96,11 @@ def main():
     print()
 
     print(
-        f"1. {summary['both_unmapped_count']} tokens ({summary['both_unmapped_count']/summary['total_hyperliquid']*100:.1f}% of Hyperliquid unmapped) need V2/V3 price discovery"
+        f"1. {summary['both_unmapped_count']} tokens ({summary['both_unmapped_count'] / summary['total_hyperliquid'] * 100:.1f}% of Hyperliquid unmapped) need V2/V3 price discovery"
     )
     print()
 
-    print(
-        "2. These are NOT obscure tokens - they include major L1s (ADA, LTC), "
-    )
+    print("2. These are NOT obscure tokens - they include major L1s (ADA, LTC), ")
     print("   DeFi protocols (GMX, PYTH), and popular memes (WIF, POPCAT)")
     print()
 
@@ -112,9 +110,7 @@ def main():
     print()
 
     print("4. The solution:")
-    print(
-        "   ✅ Implement iterative V2 price discovery as requested by the user"
-    )
+    print("   ✅ Implement iterative V2 price discovery as requested by the user")
     print("   ✅ Start with Hyperliquid/Binance prices for base tokens")
     print(
         "   ✅ Iteratively discover prices through V2 pools until no new prices found"

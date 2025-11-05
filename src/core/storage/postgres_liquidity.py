@@ -14,9 +14,9 @@ Schema:
         - Pool metadata + statistics
 """
 
-import logging
 import json
-from datetime import datetime, UTC
+import logging
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import text
@@ -112,9 +112,7 @@ def setup_liquidity_snapshots_table(engine: Engine, chain_id: int) -> bool:
 
 
 def store_liquidity_snapshot(
-    pool_address: str,
-    snapshot_data: dict,
-    chain_id: int = 1
+    pool_address: str, snapshot_data: dict, chain_id: int = 1
 ) -> bool:
     """
     Store or update a liquidity snapshot for a pool.
@@ -132,8 +130,15 @@ def store_liquidity_snapshot(
 
     # Validate required fields
     required_fields = [
-        "snapshot_block", "tick_bitmap", "tick_data",
-        "factory", "asset0", "asset1", "fee", "tick_spacing", "protocol"
+        "snapshot_block",
+        "tick_bitmap",
+        "tick_data",
+        "factory",
+        "asset0",
+        "asset1",
+        "fee",
+        "tick_spacing",
+        "protocol",
     ]
     for field in required_fields:
         if field not in snapshot_data:
@@ -190,8 +195,7 @@ def store_liquidity_snapshot(
                     "pool_address": pool_address,
                     "snapshot_block": snapshot_data["snapshot_block"],
                     "snapshot_timestamp": snapshot_data.get(
-                        "snapshot_timestamp",
-                        datetime.now(UTC)
+                        "snapshot_timestamp", datetime.now(UTC)
                     ),
                     "tick_bitmap": json.dumps(snapshot_data["tick_bitmap"]),
                     "tick_data": json.dumps(snapshot_data["tick_data"]),
@@ -203,21 +207,22 @@ def store_liquidity_snapshot(
                     "protocol": snapshot_data["protocol"],
                     "total_ticks": total_ticks,
                     "total_bitmap_words": total_bitmap_words,
-                    "last_event_block": snapshot_data.get("last_event_block", snapshot_data["snapshot_block"]),
+                    "last_event_block": snapshot_data.get(
+                        "last_event_block", snapshot_data["snapshot_block"]
+                    ),
                 },
             )
             conn.commit()
-            logger.debug(f"Stored snapshot for pool {pool_address} at block {snapshot_data['snapshot_block']}")
+            logger.debug(
+                f"Stored snapshot for pool {pool_address} at block {snapshot_data['snapshot_block']}"
+            )
             return True
     except Exception as e:
         logger.error(f"Error storing snapshot for pool {pool_address}: {e}")
         return False
 
 
-def load_liquidity_snapshot(
-    pool_address: str,
-    chain_id: int = 1
-) -> Optional[dict]:
+def load_liquidity_snapshot(pool_address: str, chain_id: int = 1) -> Optional[dict]:
     """
     Load liquidity snapshot for a specific pool.
 
@@ -244,10 +249,7 @@ def load_liquidity_snapshot(
 
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text(select_sql),
-                {"pool_address": pool_address}
-            )
+            result = conn.execute(text(select_sql), {"pool_address": pool_address})
             row = result.fetchone()
 
             if not row:
@@ -281,9 +283,7 @@ def load_liquidity_snapshot(
 
 
 def load_all_snapshots(
-    chain_id: int = 1,
-    after_block: int = 0,
-    limit: Optional[int] = None
+    chain_id: int = 1, after_block: int = 0, limit: Optional[int] = None
 ) -> dict[str, dict]:
     """
     Load all liquidity snapshots for a chain.
@@ -316,10 +316,7 @@ def load_all_snapshots(
 
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text(select_sql),
-                {"after_block": after_block}
-            )
+            result = conn.execute(text(select_sql), {"after_block": after_block})
 
             snapshots = {}
             for row in result:
@@ -353,10 +350,7 @@ def load_all_snapshots(
         return {}
 
 
-def get_snapshot_metadata(
-    pool_address: str,
-    chain_id: int = 1
-) -> Optional[dict]:
+def get_snapshot_metadata(pool_address: str, chain_id: int = 1) -> Optional[dict]:
     """
     Get metadata for a liquidity snapshot (without the large JSONB fields).
 
@@ -382,10 +376,7 @@ def get_snapshot_metadata(
 
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text(select_sql),
-                {"pool_address": pool_address}
-            )
+            result = conn.execute(text(select_sql), {"pool_address": pool_address})
             row = result.fetchone()
 
             if not row:
@@ -464,24 +455,16 @@ def get_snapshot_statistics(chain_id: int = 1) -> dict:
             # Get per-protocol breakdown
             result = conn.execute(text(protocols_sql))
             stats["snapshots_by_protocol"] = {
-                row.protocol: row.pool_count
-                for row in result
+                row.protocol: row.pool_count for row in result
             }
 
             return stats
     except Exception as e:
         logger.error(f"Error getting snapshot statistics for chain {chain_id}: {e}")
-        return {
-            "chain_id": chain_id,
-            "error": str(e)
-        }
+        return {"chain_id": chain_id, "error": str(e)}
 
 
-def update_snapshot(
-    pool_address: str,
-    updated_data: dict,
-    chain_id: int = 1
-) -> bool:
+def update_snapshot(pool_address: str, updated_data: dict, chain_id: int = 1) -> bool:
     """
     Update an existing liquidity snapshot.
 
@@ -530,10 +513,7 @@ def delete_snapshot(pool_address: str, chain_id: int = 1) -> bool:
 
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text(delete_sql),
-                {"pool_address": pool_address}
-            )
+            result = conn.execute(text(delete_sql), {"pool_address": pool_address})
             conn.commit()
             logger.info(f"Deleted snapshot for pool {pool_address}")
             return result.rowcount > 0

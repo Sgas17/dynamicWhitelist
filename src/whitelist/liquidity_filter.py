@@ -6,13 +6,12 @@ Filters pools based on minimum dollar notional value of reserves/liquidity.
 
 import asyncio
 import logging
+import sys
 from decimal import Decimal
-from typing import Dict, Set, Tuple, Optional, List
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 from web3 import Web3
-
-from pathlib import Path
-import sys
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -63,7 +62,7 @@ class PoolLiquidityFilter:
         min_liquidity_v4_usd: float = 2000,
         chain: str = "ethereum",
         reth_db_path: Optional[str] = None,
-        use_reth_db: bool = True
+        use_reth_db: bool = True,
     ):
         """
         Initialize liquidity filter.
@@ -91,6 +90,7 @@ class PoolLiquidityFilter:
         if use_reth_db:
             try:
                 import os
+
                 from src.processors.pools.reth_snapshot_loader import RethSnapshotLoader
 
                 # Get reth_db_path from parameter or environment
@@ -99,7 +99,9 @@ class PoolLiquidityFilter:
                 if db_path:
                     self.reth_loader = RethSnapshotLoader(db_path)
                     logger.info(f"✓ Reth DB loader initialized: {db_path}")
-                    logger.info("  Will use direct DB access for liquidity data (600x+ faster)")
+                    logger.info(
+                        "  Will use direct DB access for liquidity data (600x+ faster)"
+                    )
                 else:
                     logger.warning("RETH_DB_PATH not set, will use RPC fallback")
             except Exception as e:
@@ -107,9 +109,7 @@ class PoolLiquidityFilter:
                 logger.warning("Will use RPC fallback for liquidity data")
 
     async def fetch_missing_decimals(
-        self,
-        token_addresses: set,
-        existing_decimals: Dict[str, int]
+        self, token_addresses: set, existing_decimals: Dict[str, int]
     ) -> Dict[str, int]:
         """
         Fetch decimals for tokens missing from existing_decimals dict.
@@ -121,8 +121,8 @@ class PoolLiquidityFilter:
         Returns:
             Combined dict with existing + newly fetched decimals
         """
-        from src.batchers.erc20_metadata import ERC20MetadataBatcher
         from src.batchers.base import BatchConfig
+        from src.batchers.erc20_metadata import ERC20MetadataBatcher
 
         # Find tokens missing decimals
         missing = [addr for addr in token_addresses if addr not in existing_decimals]
@@ -142,8 +142,8 @@ class PoolLiquidityFilter:
         newly_fetched = 0
 
         for addr, meta in metadata.items():
-            if meta and 'decimals' in meta:
-                combined[addr.lower()] = meta['decimals']
+            if meta and "decimals" in meta:
+                combined[addr.lower()] = meta["decimals"]
                 newly_fetched += 1
 
         logger.info(f"   ✅ Fetched {newly_fetched} decimals on-chain")
@@ -175,7 +175,7 @@ class PoolLiquidityFilter:
                 base_symbol = token.base.upper()
                 # Extract oracle price from additional_data
                 try:
-                    oracle_px = token.additional_data.get('info', {}).get('oraclePx')
+                    oracle_px = token.additional_data.get("info", {}).get("oraclePx")
                     if oracle_px:
                         price = Decimal(str(oracle_px))
                         perp_prices[base_symbol] = price
@@ -189,6 +189,7 @@ class PoolLiquidityFilter:
         except Exception as e:
             logger.error(f"Error fetching Hyperliquid prices: {e}")
             import traceback
+
             traceback.print_exc()
             return {}
 
@@ -203,7 +204,7 @@ class PoolLiquidityFilter:
 
         try:
             from src.fetchers.exchange_fetchers import BinanceFetcher
-            
+
             fetcher = BinanceFetcher()
             result = await fetcher.fetch_markets(market_type="spot")
 
@@ -219,8 +220,7 @@ class PoolLiquidityFilter:
             # The market data just tells us which markets exist
             loop = asyncio.get_event_loop()
             tickers = await loop.run_in_executor(
-                None,
-                fetcher.ccxt_exchange.fetchTickers
+                None, fetcher.ccxt_exchange.fetchTickers
             )
 
             for token in tokens_data:
@@ -234,27 +234,27 @@ class PoolLiquidityFilter:
                     continue
 
                 # Get last traded price
-                last_price = ticker.get('last')
+                last_price = ticker.get("last")
                 if last_price is None:
                     continue
 
                 try:
                     price = Decimal(str(last_price))
-                    
+
                     # Convert to USD if quote is not USD-based
-                    if quote_symbol in ['USDT', 'USDC', 'BUSD', 'USD']:
+                    if quote_symbol in ["USDT", "USDC", "BUSD", "USD"]:
                         # Already in USD terms
                         spot_prices[base_symbol] = price
                         logger.debug(f"  {base_symbol}: ${price}")
-                    elif quote_symbol == 'BTC' and 'BTC' in spot_prices:
+                    elif quote_symbol == "BTC" and "BTC" in spot_prices:
                         # Convert BTC-quoted price to USD
-                        btc_price = spot_prices['BTC']
+                        btc_price = spot_prices["BTC"]
                         usd_price = price * btc_price
                         spot_prices[base_symbol] = usd_price
                         logger.debug(f"  {base_symbol}: ${usd_price} (via BTC)")
-                    elif quote_symbol == 'ETH' and 'ETH' in spot_prices:
+                    elif quote_symbol == "ETH" and "ETH" in spot_prices:
                         # Convert ETH-quoted price to USD
-                        eth_price = spot_prices['ETH']
+                        eth_price = spot_prices["ETH"]
                         usd_price = price * eth_price
                         spot_prices[base_symbol] = usd_price
                         logger.debug(f"  {base_symbol}: ${usd_price} (via ETH)")
@@ -270,6 +270,7 @@ class PoolLiquidityFilter:
         except Exception as e:
             logger.error(f"Error fetching Binance prices: {e}")
             import traceback
+
             traceback.print_exc()
             return {}
 
@@ -280,7 +281,7 @@ class PoolLiquidityFilter:
         initial_prices: Dict[str, Decimal],
         token_decimals: Dict[str, int],
         v2_factories: list,
-        max_iterations: int = 10
+        max_iterations: int = 10,
     ) -> Dict[str, Decimal]:
         """
         Iteratively discover token prices through V2 pools.
@@ -345,30 +346,30 @@ class PoolLiquidityFilter:
                     query,
                     [f.lower() for f in v2_factories],
                     [addr.lower() for addr in tokens_without_prices],
-                    [addr.lower() for addr in tokens_with_prices]
+                    [addr.lower() for addr in tokens_with_prices],
                 )
 
             if not results:
                 break
 
             # Fetch reserves
-            pool_addresses = [row['pool_address'].lower() for row in results]
+            pool_addresses = [row["pool_address"].lower() for row in results]
             reserves = await v2_batcher.fetch_reserves_chunked(pool_addresses)
 
             # Calculate prices
             new_prices_found = 0
             for row in results:
-                pool_addr = row['pool_address'].lower()
-                token0 = row['token0'].lower()
-                token1 = row['token1'].lower()
+                pool_addr = row["pool_address"].lower()
+                token0 = row["token0"].lower()
+                token1 = row["token1"].lower()
 
                 reserve_data = reserves.get(pool_addr)
                 if not reserve_data:
                     continue
 
                 try:
-                    reserve0 = Decimal(str(int(reserve_data['reserve0'], 16)))
-                    reserve1 = Decimal(str(int(reserve_data['reserve1'], 16)))
+                    reserve0 = Decimal(str(int(reserve_data["reserve0"], 16)))
+                    reserve1 = Decimal(str(int(reserve_data["reserve1"], 16)))
 
                     if reserve0 == 0 or reserve1 == 0:
                         continue
@@ -383,8 +384,8 @@ class PoolLiquidityFilter:
                     if token0 in tokens_with_prices and token1 in tokens_without_prices:
                         price0 = prices[token0]
                         # Adjust for decimals and calculate
-                        adj_reserve0 = reserve0 / Decimal(10 ** decimals0)
-                        adj_reserve1 = reserve1 / Decimal(10 ** decimals1)
+                        adj_reserve0 = reserve0 / Decimal(10**decimals0)
+                        adj_reserve1 = reserve1 / Decimal(10**decimals1)
                         price1 = (adj_reserve0 / adj_reserve1) * price0
 
                         prices[token1] = price1
@@ -392,10 +393,12 @@ class PoolLiquidityFilter:
                         tokens_without_prices.discard(token1)
                         new_prices_found += 1
 
-                    elif token1 in tokens_with_prices and token0 in tokens_without_prices:
+                    elif (
+                        token1 in tokens_with_prices and token0 in tokens_without_prices
+                    ):
                         price1 = prices[token1]
-                        adj_reserve0 = reserve0 / Decimal(10 ** decimals0)
-                        adj_reserve1 = reserve1 / Decimal(10 ** decimals1)
+                        adj_reserve0 = reserve0 / Decimal(10**decimals0)
+                        adj_reserve1 = reserve1 / Decimal(10**decimals1)
                         price0 = (adj_reserve1 / adj_reserve0) * price1
 
                         prices[token0] = price0
@@ -409,7 +412,9 @@ class PoolLiquidityFilter:
             if new_prices_found == 0:
                 break
 
-        logger.info(f"   ✅ V2 Discovery: {len(prices) - len(initial_prices)} new prices")
+        logger.info(
+            f"   ✅ V2 Discovery: {len(prices) - len(initial_prices)} new prices"
+        )
         return prices
 
     async def discover_prices_from_v3_pools(
@@ -419,7 +424,7 @@ class PoolLiquidityFilter:
         initial_prices: Dict[str, Decimal],
         token_decimals: Dict[str, int],
         v3_factories: list,
-        max_iterations: int = 10
+        max_iterations: int = 10,
     ) -> Dict[str, Decimal]:
         """
         Iteratively discover token prices through V3 pools using sqrtPriceX96.
@@ -435,8 +440,8 @@ class PoolLiquidityFilter:
         Returns:
             Dict of token_address -> price with all discovered prices
         """
-        from src.batchers.uniswap_v3_data import UniswapV3DataBatcher
         from src.batchers.base import BatchConfig
+        from src.batchers.uniswap_v3_data import UniswapV3DataBatcher
 
         logger.info("🔍 V3 Price Discovery Starting...")
         logger.info(f"   Starting with {len(initial_prices)} prices")
@@ -479,29 +484,29 @@ class PoolLiquidityFilter:
                     query,
                     [f.lower() for f in v3_factories],
                     [addr.lower() for addr in tokens_without_prices],
-                    [addr.lower() for addr in tokens_with_prices]
+                    [addr.lower() for addr in tokens_with_prices],
                 )
 
             if not results:
                 break
 
             # Fetch pool states
-            pool_addresses = [row['pool_address'].lower() for row in results]
+            pool_addresses = [row["pool_address"].lower() for row in results]
             pool_states = await v3_batcher.fetch_pools_chunked(pool_addresses)
 
             # Calculate prices
             new_prices_found = 0
             for row in results:
-                pool_addr = row['pool_address'].lower()
-                token0 = row['token0'].lower()
-                token1 = row['token1'].lower()
+                pool_addr = row["pool_address"].lower()
+                token0 = row["token0"].lower()
+                token1 = row["token1"].lower()
 
                 state = pool_states.get(pool_addr)
                 if not state:
                     continue
 
                 try:
-                    sqrt_price_x96 = int(state['sqrtPriceX96'])
+                    sqrt_price_x96 = int(state["sqrtPriceX96"])
                     if sqrt_price_x96 == 0:
                         continue
 
@@ -513,7 +518,7 @@ class PoolLiquidityFilter:
 
                     # Calculate price ratio from sqrtPriceX96
                     # price = (sqrtPriceX96 / 2^96)^2 * (10^decimals0 / 10^decimals1)
-                    price_ratio = Decimal(sqrt_price_x96 ** 2) / Decimal(2 ** 192)
+                    price_ratio = Decimal(sqrt_price_x96**2) / Decimal(2**192)
                     decimals_adjustment = Decimal(10 ** (decimals0 - decimals1))
                     price_token0_in_token1 = price_ratio * decimals_adjustment
 
@@ -527,7 +532,9 @@ class PoolLiquidityFilter:
                             tokens_without_prices.discard(token1)
                             new_prices_found += 1
 
-                    elif token1 in tokens_with_prices and token0 in tokens_without_prices:
+                    elif (
+                        token1 in tokens_with_prices and token0 in tokens_without_prices
+                    ):
                         price1 = prices[token1]
                         price0 = price1 * price_token0_in_token1
                         prices[token0] = price0
@@ -541,7 +548,9 @@ class PoolLiquidityFilter:
             if new_prices_found == 0:
                 break
 
-        logger.info(f"   ✅ V3 Discovery: {len(prices) - len(initial_prices)} new prices")
+        logger.info(
+            f"   ✅ V3 Discovery: {len(prices) - len(initial_prices)} new prices"
+        )
         return prices
 
     async def discover_prices_from_v4_pools(
@@ -551,7 +560,7 @@ class PoolLiquidityFilter:
         initial_prices: Dict[str, Decimal],
         token_decimals: Dict[str, int],
         v4_factories: list,
-        max_iterations: int = 10
+        max_iterations: int = 10,
     ) -> Dict[str, Decimal]:
         """
         Iteratively discover token prices through V4 pools using sqrtPriceX96.
@@ -570,8 +579,8 @@ class PoolLiquidityFilter:
         Returns:
             Dict of token_address -> price with all discovered prices
         """
-        from src.batchers.uniswap_v4_data import UniswapV4DataBatcher
         from src.batchers.base import BatchConfig
+        from src.batchers.uniswap_v4_data import UniswapV4DataBatcher
 
         logger.info("🔍 V4 Price Discovery Starting...")
         logger.info(f"   Starting with {len(initial_prices)} prices")
@@ -615,22 +624,22 @@ class PoolLiquidityFilter:
                     query,
                     [f.lower() for f in v4_factories],
                     [addr.lower() for addr in tokens_without_prices],
-                    [addr.lower() for addr in tokens_with_prices]
+                    [addr.lower() for addr in tokens_with_prices],
                 )
 
             if not results:
                 break
 
             # Fetch pool states
-            pool_ids = [row['pool_id'].lower() for row in results]
+            pool_ids = [row["pool_id"].lower() for row in results]
             pool_states = await v4_batcher.fetch_pools_chunked(pool_ids)
 
             # Calculate prices
             new_prices_found = 0
             for row in results:
-                pool_id = row['pool_id'].lower()
-                token0 = row['token0'].lower()
-                token1 = row['token1'].lower()
+                pool_id = row["pool_id"].lower()
+                token0 = row["token0"].lower()
+                token1 = row["token1"].lower()
 
                 # Normalize zero address to WETH for pricing
                 token0_lookup = normalize_token_for_pricing(token0)
@@ -641,7 +650,7 @@ class PoolLiquidityFilter:
                     continue
 
                 try:
-                    sqrt_price_x96 = int(state['sqrtPriceX96'])
+                    sqrt_price_x96 = int(state["sqrtPriceX96"])
                     if sqrt_price_x96 == 0:
                         continue
 
@@ -653,13 +662,16 @@ class PoolLiquidityFilter:
                         continue
 
                     # Calculate price ratio from sqrtPriceX96
-                    price_ratio = Decimal(sqrt_price_x96 ** 2) / Decimal(2 ** 192)
+                    price_ratio = Decimal(sqrt_price_x96**2) / Decimal(2**192)
                     decimals_adjustment = Decimal(10 ** (decimals0 - decimals1))
                     price_token0_in_token1 = price_ratio * decimals_adjustment
 
                     # Determine which token has price and calculate the other
                     # Use normalized addresses for price lookup
-                    if token0_lookup in tokens_with_prices and token1_lookup in tokens_without_prices:
+                    if (
+                        token0_lookup in tokens_with_prices
+                        and token1_lookup in tokens_without_prices
+                    ):
                         price0 = prices[token0_lookup]
                         if price_token0_in_token1 > 0:
                             price1 = price0 / price_token0_in_token1
@@ -668,7 +680,10 @@ class PoolLiquidityFilter:
                             tokens_without_prices.discard(token1_lookup)
                             new_prices_found += 1
 
-                    elif token1_lookup in tokens_with_prices and token0_lookup in tokens_without_prices:
+                    elif (
+                        token1_lookup in tokens_with_prices
+                        and token0_lookup in tokens_without_prices
+                    ):
                         price1 = prices[token1_lookup]
                         price0 = price1 * price_token0_in_token1
                         prices[token0_lookup] = price0
@@ -682,13 +697,13 @@ class PoolLiquidityFilter:
             if new_prices_found == 0:
                 break
 
-        logger.info(f"   ✅ V4 Discovery: {len(prices) - len(initial_prices)} new prices")
+        logger.info(
+            f"   ✅ V4 Discovery: {len(prices) - len(initial_prices)} new prices"
+        )
         return prices
 
     def _map_token_to_price_symbol(
-        self,
-        token_address: str,
-        token_symbols: Dict[str, str]
+        self, token_address: str, token_symbols: Dict[str, str]
     ) -> str:
         """
         Map token address to price symbol for lookup.
@@ -716,7 +731,7 @@ class PoolLiquidityFilter:
         reserve_other: int,
         decimals_token: int,
         decimals_other: int,
-        price_other: Decimal
+        price_other: Decimal,
     ) -> Decimal:
         """
         Calculate token price from pool reserves when we have the other token's price.
@@ -753,7 +768,7 @@ class PoolLiquidityFilter:
         pools: Dict[str, Dict],
         token_symbols: Dict[str, str],
         token_decimals: Dict[str, int],
-        hyperliquid_symbol_prices: Dict[str, Decimal]
+        hyperliquid_symbol_prices: Dict[str, Decimal],
     ) -> Tuple[Dict[str, Dict], Dict[str, Decimal]]:
         """
         Filter Uniswap V2 pools by minimum liquidity.
@@ -779,10 +794,14 @@ class PoolLiquidityFilter:
             symbol_upper = self._map_token_to_price_symbol(token_addr, token_symbols)
             if symbol_upper in hyperliquid_symbol_prices:
                 token_prices[token_addr] = hyperliquid_symbol_prices[symbol_upper]
-                logger.debug(f"  Mapped {symbol} ({token_addr[:10]}...) -> ${token_prices[token_addr]}")
+                logger.debug(
+                    f"  Mapped {symbol} ({token_addr[:10]}...) -> ${token_prices[token_addr]}"
+                )
 
         initial_price_count = len(token_prices)
-        logger.info(f"  📍 Starting V2 filtering with {initial_price_count} prices from Hyperliquid")
+        logger.info(
+            f"  📍 Starting V2 filtering with {initial_price_count} prices from Hyperliquid"
+        )
 
         # Batch fetch reserves for all pools
         pool_addresses = list(pools.keys())
@@ -806,13 +825,13 @@ class PoolLiquidityFilter:
                 logger.debug(f"  No reserves data for {pool_addr[:10]}...")
                 continue
 
-            token0_addr = pool_data['token0']['address']
-            token1_addr = pool_data['token1']['address']
+            token0_addr = pool_data["token0"]["address"]
+            token1_addr = pool_data["token1"]["address"]
 
             # Parse reserves as integers
             try:
-                reserve0 = int(reserves['reserve0'], 16)
-                reserve1 = int(reserves['reserve1'], 16)
+                reserve0 = int(reserves["reserve0"], 16)
+                reserve1 = int(reserves["reserve1"], 16)
             except (ValueError, TypeError) as e:
                 logger.debug(f"  Invalid reserves for {pool_addr[:10]}...: {e}")
                 continue
@@ -825,7 +844,9 @@ class PoolLiquidityFilter:
             decimals1 = token_decimals.get(token1_addr)
 
             if decimals0 is None or decimals1 is None:
-                logger.debug(f"  Missing decimals for V2 pool (token0={decimals0}, token1={decimals1})")
+                logger.debug(
+                    f"  Missing decimals for V2 pool (token0={decimals0}, token1={decimals1})"
+                )
                 continue
 
             # Get or calculate prices
@@ -842,30 +863,40 @@ class PoolLiquidityFilter:
                     reserve0, reserve1, decimals0, decimals1, price1
                 )
                 token_prices[token0_addr] = price0
-                logger.debug(f"  Calculated price for {token_symbols.get(token0_addr, token0_addr[:8])}: ${price0}")
+                logger.debug(
+                    f"  Calculated price for {token_symbols.get(token0_addr, token0_addr[:8])}: ${price0}"
+                )
 
             elif price1 is None and price0 is not None:
                 price1 = self._calculate_token_price_from_pair(
                     reserve1, reserve0, decimals1, decimals0, price0
                 )
                 token_prices[token1_addr] = price1
-                logger.debug(f"  Calculated price for {token_symbols.get(token1_addr, token1_addr[:8])}: ${price1}")
+                logger.debug(
+                    f"  Calculated price for {token_symbols.get(token1_addr, token1_addr[:8])}: ${price1}"
+                )
 
             # Calculate liquidity in USD
-            liquidity0_usd = (Decimal(reserve0) / Decimal(10 ** decimals0)) * price0
-            liquidity1_usd = (Decimal(reserve1) / Decimal(10 ** decimals1)) * price1
+            liquidity0_usd = (Decimal(reserve0) / Decimal(10**decimals0)) * price0
+            liquidity1_usd = (Decimal(reserve1) / Decimal(10**decimals1)) * price1
             total_liquidity_usd = liquidity0_usd + liquidity1_usd
 
             # Filter by minimum liquidity (using V2-specific threshold)
             if total_liquidity_usd >= self.min_liquidity_v2_usd:
                 filtered_pools[pool_addr] = pool_data
-                logger.debug(f"  ✓ {pool_addr[:10]}... - ${total_liquidity_usd:,.2f} liquidity")
+                logger.debug(
+                    f"  ✓ {pool_addr[:10]}... - ${total_liquidity_usd:,.2f} liquidity"
+                )
             else:
                 pools_below_threshold += 1
 
-        logger.info(f"  ✅ {len(filtered_pools)} V2 pools above ${self.min_liquidity_v2_usd:,.0f} threshold")
+        logger.info(
+            f"  ✅ {len(filtered_pools)} V2 pools above ${self.min_liquidity_v2_usd:,.0f} threshold"
+        )
         logger.info(f"  ❌ {pools_below_threshold} V2 pools below threshold")
-        logger.info(f"  💰 Discovered {len(token_prices) - initial_price_count} new token prices from V2 pools (total: {len(token_prices)})")
+        logger.info(
+            f"  💰 Discovered {len(token_prices) - initial_price_count} new token prices from V2 pools (total: {len(token_prices)})"
+        )
 
         return filtered_pools, token_prices
 
@@ -874,7 +905,7 @@ class PoolLiquidityFilter:
         pools: Dict[str, Dict],
         token_symbols: Dict[str, str],
         token_decimals: Dict[str, int],
-        token_prices: Dict[str, Decimal]
+        token_prices: Dict[str, Decimal],
     ) -> Tuple[Dict[str, Dict], Dict[str, Decimal]]:
         """
         Filter Uniswap V3 pools by minimum liquidity.
@@ -900,6 +931,7 @@ class PoolLiquidityFilter:
         pool_addresses = list(pools.keys())
         # Use smaller batch size to minimize impact of failed pools
         from src.batchers.base import BatchConfig
+
         batch_config = BatchConfig(batch_size=50)
         batcher = UniswapV3DataBatcher(self.web3, config=batch_config)
 
@@ -920,7 +952,9 @@ class PoolLiquidityFilter:
         pools_calc_error = 0
         updated_prices = dict(token_prices)
 
-        logger.info(f"  📍 Starting with {len(updated_prices)} token prices from V2 + Hyperliquid")
+        logger.info(
+            f"  📍 Starting with {len(updated_prices)} token prices from V2 + Hyperliquid"
+        )
 
         for pool_addr, pool_data in pools.items():
             # Get pool state
@@ -930,14 +964,14 @@ class PoolLiquidityFilter:
                 logger.debug(f"  No state data for {pool_addr[:10]}...")
                 continue
 
-            token0_addr = pool_data['token0']['address']
-            token1_addr = pool_data['token1']['address']
+            token0_addr = pool_data["token0"]["address"]
+            token1_addr = pool_data["token1"]["address"]
 
             # Get pool parameters
             try:
-                sqrt_price_x96 = int(state['sqrtPriceX96'])
-                liquidity = int(state['liquidity'])
-                tick = int(state['tick'])
+                sqrt_price_x96 = int(state["sqrtPriceX96"])
+                liquidity = int(state["liquidity"])
+                tick = int(state["tick"])
             except (ValueError, TypeError, KeyError) as e:
                 logger.debug(f"  Invalid pool state for {pool_addr[:10]}...: {e}")
                 pools_calc_error += 1
@@ -954,7 +988,9 @@ class PoolLiquidityFilter:
 
             if decimals0 is None or decimals1 is None:
                 pools_no_decimals += 1
-                logger.debug(f"  Missing decimals for pool (token0={decimals0}, token1={decimals1})")
+                logger.debug(
+                    f"  Missing decimals for pool (token0={decimals0}, token1={decimals1})"
+                )
                 continue
 
             # Get prices
@@ -984,22 +1020,24 @@ class PoolLiquidityFilter:
                     sqrt_ratio_a_x96=sqrt_ratio_lower,
                     sqrt_ratio_b_x96=sqrt_ratio_upper,
                     liquidity=liquidity,
-                    round_up=True
+                    round_up=True,
                 )
                 amount1 = get_amount1_delta(
                     sqrt_ratio_a_x96=sqrt_ratio_lower,
                     sqrt_ratio_b_x96=sqrt_ratio_upper,
                     liquidity=liquidity,
-                    round_up=True
+                    round_up=True,
                 )
 
             except Exception as e:
-                logger.debug(f"  Failed to calculate amounts for {pool_addr[:10]}...: {e}")
+                logger.debug(
+                    f"  Failed to calculate amounts for {pool_addr[:10]}...: {e}"
+                )
                 continue
 
             # Convert amounts to decimal format
-            amount0_decimal = Decimal(amount0) / Decimal(10 ** decimals0)
-            amount1_decimal = Decimal(amount1) / Decimal(10 ** decimals1)
+            amount0_decimal = Decimal(amount0) / Decimal(10**decimals0)
+            amount1_decimal = Decimal(amount1) / Decimal(10**decimals1)
 
             # Calculate or derive prices if one is missing
             if price0 is None and price1 is not None:
@@ -1007,7 +1045,9 @@ class PoolLiquidityFilter:
                 if amount0 > 0:
                     price0 = (amount1_decimal / amount0_decimal) * price1
                     updated_prices[token0_addr] = price0
-                    logger.debug(f"  Calculated price for {token_symbols.get(token0_addr, token0_addr[:8])}: ${price0}")
+                    logger.debug(
+                        f"  Calculated price for {token_symbols.get(token0_addr, token0_addr[:8])}: ${price0}"
+                    )
                 else:
                     continue
 
@@ -1016,7 +1056,9 @@ class PoolLiquidityFilter:
                 if amount1 > 0:
                     price1 = (amount0_decimal / amount1_decimal) * price0
                     updated_prices[token1_addr] = price1
-                    logger.debug(f"  Calculated price for {token_symbols.get(token1_addr, token1_addr[:8])}: ${price1}")
+                    logger.debug(
+                        f"  Calculated price for {token_symbols.get(token1_addr, token1_addr[:8])}: ${price1}"
+                    )
                 else:
                     continue
 
@@ -1028,11 +1070,15 @@ class PoolLiquidityFilter:
             # Filter by minimum liquidity
             if total_liquidity_usd >= self.min_liquidity_usd:
                 filtered_pools[pool_addr] = pool_data
-                logger.debug(f"  ✓ {pool_addr[:10]}... - ${total_liquidity_usd:,.2f} liquidity")
+                logger.debug(
+                    f"  ✓ {pool_addr[:10]}... - ${total_liquidity_usd:,.2f} liquidity"
+                )
             else:
                 pools_below_threshold += 1
 
-        logger.info(f"  ✅ {len(filtered_pools)} V3 pools above ${self.min_liquidity_usd:,.0f} threshold")
+        logger.info(
+            f"  ✅ {len(filtered_pools)} V3 pools above ${self.min_liquidity_usd:,.0f} threshold"
+        )
         logger.info(f"  ❌ {pools_below_threshold} V3 pools below threshold")
         logger.info(f"  📊 V3 Filtering breakdown:")
         logger.info(f"     {pools_no_state} pools missing state data")
@@ -1040,7 +1086,9 @@ class PoolLiquidityFilter:
         logger.info(f"     {pools_no_decimals} pools missing token decimals")
         logger.info(f"     {pools_no_prices} pools missing both token prices")
         logger.info(f"     {pools_calc_error} pools with calculation errors")
-        logger.info(f"  💰 Discovered {len(updated_prices) - len(token_prices)} new token prices from V3 pools")
+        logger.info(
+            f"  💰 Discovered {len(updated_prices) - len(token_prices)} new token prices from V3 pools"
+        )
 
         return filtered_pools, updated_prices
 
@@ -1049,7 +1097,7 @@ class PoolLiquidityFilter:
         pools: Dict[str, Dict],
         token_symbols: Dict[str, str],
         token_decimals: Dict[str, int],
-        token_prices: Dict[str, Decimal]
+        token_prices: Dict[str, Decimal],
     ) -> Tuple[Dict[str, Dict], Dict[str, Decimal]]:
         """
         Filter Uniswap V4 pools by minimum liquidity.
@@ -1074,6 +1122,7 @@ class PoolLiquidityFilter:
         # Batch fetch pool state (sqrtPriceX96, liquidity, tick)
         pool_ids = list(pools.keys())
         from src.batchers.base import BatchConfig
+
         batch_config = BatchConfig(batch_size=50)
         batcher = UniswapV4DataBatcher(self.web3, config=batch_config)
 
@@ -1102,8 +1151,8 @@ class PoolLiquidityFilter:
                 logger.debug(f"  No state data for pool {pool_id[:10]}...")
                 continue
 
-            token0_addr = pool_data['token0']['address']
-            token1_addr = pool_data['token1']['address']
+            token0_addr = pool_data["token0"]["address"]
+            token1_addr = pool_data["token1"]["address"]
 
             # Normalize addresses for price/decimal lookup (zero address -> WETH)
             token0_lookup = normalize_token_for_pricing(token0_addr)
@@ -1111,9 +1160,9 @@ class PoolLiquidityFilter:
 
             # Get pool parameters
             try:
-                sqrt_price_x96 = int(state['sqrtPriceX96'])
-                liquidity = int(state['liquidity'])
-                tick = int(state['tick'])
+                sqrt_price_x96 = int(state["sqrtPriceX96"])
+                liquidity = int(state["liquidity"])
+                tick = int(state["tick"])
             except (ValueError, TypeError, KeyError) as e:
                 logger.debug(f"  Invalid pool state for {pool_id[:10]}...: {e}")
                 continue
@@ -1130,7 +1179,9 @@ class PoolLiquidityFilter:
 
             if decimals0 is None or decimals1 is None:
                 pools_no_decimals += 1
-                logger.debug(f"  Missing decimals for pool (token0={decimals0}, token1={decimals1})")
+                logger.debug(
+                    f"  Missing decimals for pool (token0={decimals0}, token1={decimals1})"
+                )
                 continue
 
             # Get prices - use normalized addresses for lookup
@@ -1153,12 +1204,16 @@ class PoolLiquidityFilter:
                 sqrt_ratio_b = get_sqrt_ratio_at_tick(tick_upper)
 
                 # Calculate token amounts
-                amount0 = get_amount0_delta(sqrt_ratio_a, sqrt_ratio_b, liquidity, roundUp=False)
-                amount1 = get_amount1_delta(sqrt_ratio_a, sqrt_ratio_b, liquidity, roundUp=False)
+                amount0 = get_amount0_delta(
+                    sqrt_ratio_a, sqrt_ratio_b, liquidity, roundUp=False
+                )
+                amount1 = get_amount1_delta(
+                    sqrt_ratio_a, sqrt_ratio_b, liquidity, roundUp=False
+                )
 
                 # Convert to human-readable amounts
-                amount0_decimal = Decimal(abs(amount0)) / Decimal(10 ** decimals0)
-                amount1_decimal = Decimal(abs(amount1)) / Decimal(10 ** decimals1)
+                amount0_decimal = Decimal(abs(amount0)) / Decimal(10**decimals0)
+                amount1_decimal = Decimal(abs(amount1)) / Decimal(10**decimals1)
 
                 # Calculate USD value
                 value0_usd = amount0_decimal * price0 if price0 else Decimal(0)
@@ -1168,7 +1223,7 @@ class PoolLiquidityFilter:
                 # If we only have one price, try to infer the other
                 if price0 and not price1 and amount1_decimal > 0:
                     # Calculate implied price from pool ratio
-                    price_ratio = Decimal(sqrt_price_x96 ** 2) / Decimal(2 ** 192)
+                    price_ratio = Decimal(sqrt_price_x96**2) / Decimal(2**192)
                     implied_price1 = price0 / price_ratio if price_ratio > 0 else None
                     if implied_price1:
                         value1_usd = amount1_decimal * implied_price1
@@ -1178,7 +1233,7 @@ class PoolLiquidityFilter:
 
                 elif price1 and not price0 and amount0_decimal > 0:
                     # Calculate implied price from pool ratio
-                    price_ratio = Decimal(sqrt_price_x96 ** 2) / Decimal(2 ** 192)
+                    price_ratio = Decimal(sqrt_price_x96**2) / Decimal(2**192)
                     implied_price0 = price1 * price_ratio
                     if implied_price0:
                         value0_usd = amount0_decimal * implied_price0
@@ -1194,15 +1249,26 @@ class PoolLiquidityFilter:
 
             except Exception as e:
                 pools_calc_error += 1
-                logger.debug(f"  Error calculating liquidity for {pool_id[:10]}...: {e}")
+                logger.debug(
+                    f"  Error calculating liquidity for {pool_id[:10]}...: {e}"
+                )
                 continue
 
         # Log summary
         logger.info(f"  ✅ Filtered {len(filtered_pools)} V4 pools")
-        logger.info(f"     {pools_below_threshold} pools below ${self.min_liquidity_usd} threshold")
+        logger.info(
+            f"     {pools_below_threshold} pools below ${self.min_liquidity_usd} threshold"
+        )
 
         # Log reasons for filtering
-        total_filtered = pools_no_state + pools_zero_liquidity + pools_no_decimals + pools_no_prices + pools_calc_error + pools_below_threshold
+        total_filtered = (
+            pools_no_state
+            + pools_zero_liquidity
+            + pools_no_decimals
+            + pools_no_prices
+            + pools_calc_error
+            + pools_below_threshold
+        )
         if total_filtered > 0:
             logger.info(f"  📊 Filtering breakdown:")
             logger.info(f"     {pools_no_state} pools missing state data")
@@ -1220,7 +1286,7 @@ class PoolLiquidityFilter:
         v3_pairs: Dict[str, Dict],
         v4_pairs: Dict[str, Dict],
         token_symbols: Dict[str, str],
-        token_decimals: Dict[str, int]
+        token_decimals: Dict[str, int],
     ) -> Dict:
         """
         Filter all pools by protocol type.
@@ -1244,33 +1310,24 @@ class PoolLiquidityFilter:
 
         # Filter V2 pools
         filtered_v2, discovered_prices = await self.filter_v2_pools(
-            v2_pairs,
-            token_symbols,
-            token_decimals,
-            hyperliquid_prices
+            v2_pairs, token_symbols, token_decimals, hyperliquid_prices
         )
 
         # Filter V3 pools using prices discovered from V2 + Hyperliquid
         filtered_v3, updated_prices = await self.filter_v3_pools(
-            v3_pairs,
-            token_symbols,
-            token_decimals,
-            discovered_prices
+            v3_pairs, token_symbols, token_decimals, discovered_prices
         )
 
         # Filter V4 pools using prices discovered from V2 + V3 + Hyperliquid
         filtered_v4, final_prices = await self.filter_v4_pools(
-            v4_pairs,
-            token_symbols,
-            token_decimals,
-            updated_prices
+            v4_pairs, token_symbols, token_decimals, updated_prices
         )
 
         return {
-            'v2_pairs': filtered_v2,
-            'v3_pairs': filtered_v3,
-            'v4_pairs': filtered_v4,
-            'discovered_token_prices': final_prices
+            "v2_pairs": filtered_v2,
+            "v3_pairs": filtered_v3,
+            "v4_pairs": filtered_v4,
+            "discovered_token_prices": final_prices,
         }
 
     async def filter_pools_with_price_discovery(
@@ -1282,7 +1339,7 @@ class PoolLiquidityFilter:
         v2_factories: list,
         v3_factories: list,
         v4_factories: list,
-        pools: Dict[str, Dict]
+        pools: Dict[str, Dict],
     ) -> Dict:
         """
         Filter pools by liquidity using comprehensive price discovery.
@@ -1318,7 +1375,13 @@ class PoolLiquidityFilter:
         initial_prices = {}
         for token_addr, symbol in token_symbols.items():
             symbol_upper = symbol.upper()
-            exchange_symbol = "ETH" if symbol_upper == "WETH" else "BTC" if symbol_upper == "WBTC" else symbol_upper
+            exchange_symbol = (
+                "ETH"
+                if symbol_upper == "WETH"
+                else "BTC"
+                if symbol_upper == "WBTC"
+                else symbol_upper
+            )
 
             if exchange_symbol in binance_prices:
                 initial_prices[token_addr] = binance_prices[exchange_symbol]
@@ -1339,7 +1402,7 @@ class PoolLiquidityFilter:
             initial_prices=initial_prices,
             token_decimals=token_decimals,
             v2_factories=v2_factories,
-            max_iterations=10
+            max_iterations=10,
         )
         logger.info(f"   ✅ Total prices after V2: {len(prices_after_v2)}")
 
@@ -1351,7 +1414,7 @@ class PoolLiquidityFilter:
             initial_prices=prices_after_v2,
             token_decimals=token_decimals,
             v3_factories=v3_factories,
-            max_iterations=10
+            max_iterations=10,
         )
         logger.info(f"   ✅ Total prices after V3: {len(prices_after_v3)}")
 
@@ -1363,7 +1426,7 @@ class PoolLiquidityFilter:
             initial_prices=prices_after_v3,
             token_decimals=token_decimals,
             v4_factories=v4_factories,
-            max_iterations=10
+            max_iterations=10,
         )
         logger.info(f"   ✅ Total prices after V4: {len(final_prices)}")
 
@@ -1374,11 +1437,19 @@ class PoolLiquidityFilter:
         logger.info(f"\n💰 Step 5: Filtering {len(pools)} pools by liquidity...")
 
         # Separate pools by protocol
-        v2_pools = {addr: data for addr, data in pools.items() if data.get('protocol') == 'v2'}
-        v3_pools = {addr: data for addr, data in pools.items() if data.get('protocol') == 'v3'}
-        v4_pools = {addr: data for addr, data in pools.items() if data.get('protocol') == 'v4'}
+        v2_pools = {
+            addr: data for addr, data in pools.items() if data.get("protocol") == "v2"
+        }
+        v3_pools = {
+            addr: data for addr, data in pools.items() if data.get("protocol") == "v3"
+        }
+        v4_pools = {
+            addr: data for addr, data in pools.items() if data.get("protocol") == "v4"
+        }
 
-        logger.info(f"   V2: {len(v2_pools)}, V3: {len(v3_pools)}, V4: {len(v4_pools)} pools")
+        logger.info(
+            f"   V2: {len(v2_pools)}, V3: {len(v3_pools)}, V4: {len(v4_pools)} pools"
+        )
 
         filtered_pools = {}
         pools_below_threshold = 0
@@ -1394,7 +1465,9 @@ class PoolLiquidityFilter:
             else:
                 logger.info("   Using RPC for V2 reserves (fallback)")
                 v2_batcher = UniswapV2ReservesBatcher(self.web3)
-                v2_reserves = await v2_batcher.fetch_reserves_chunked(list(v2_pools.keys()))
+                v2_reserves = await v2_batcher.fetch_reserves_chunked(
+                    list(v2_pools.keys())
+                )
 
             for pool_addr, pool_data in v2_pools.items():
                 reserves = v2_reserves.get(pool_addr.lower())
@@ -1406,8 +1479,11 @@ class PoolLiquidityFilter:
                     pool_data, reserves, final_prices, token_decimals
                 )
 
-                if liquidity_usd is not None and liquidity_usd >= self.min_liquidity_v2_usd:
-                    pool_data['liquidity_usd'] = liquidity_usd
+                if (
+                    liquidity_usd is not None
+                    and liquidity_usd >= self.min_liquidity_v2_usd
+                ):
+                    pool_data["liquidity_usd"] = liquidity_usd
                     filtered_pools[pool_addr] = pool_data
                 else:
                     pools_below_threshold += 1
@@ -1422,14 +1498,17 @@ class PoolLiquidityFilter:
                 v3_states = self._fetch_v3_states_from_reth(v3_pools)
             else:
                 logger.info("   Using RPC for V3 state (fallback)")
-                from src.batchers.uniswap_v3_data import UniswapV3DataBatcher
                 from src.batchers.base import BatchConfig
-                v3_batcher = UniswapV3DataBatcher(self.web3, config=BatchConfig(batch_size=50))
+                from src.batchers.uniswap_v3_data import UniswapV3DataBatcher
+
+                v3_batcher = UniswapV3DataBatcher(
+                    self.web3, config=BatchConfig(batch_size=50)
+                )
                 v3_states = await v3_batcher.fetch_pools_chunked(list(v3_pools.keys()))
 
             for pool_addr, pool_data in v3_pools.items():
                 state = v3_states.get(pool_addr.lower())
-                if not state or 'liquidity' not in state:
+                if not state or "liquidity" not in state:
                     pools_below_threshold += 1
                     continue
 
@@ -1437,8 +1516,11 @@ class PoolLiquidityFilter:
                     pool_data, state, final_prices, token_decimals
                 )
 
-                if liquidity_usd is not None and liquidity_usd >= self.min_liquidity_v3_usd:
-                    pool_data['liquidity_usd'] = liquidity_usd
+                if (
+                    liquidity_usd is not None
+                    and liquidity_usd >= self.min_liquidity_v3_usd
+                ):
+                    pool_data["liquidity_usd"] = liquidity_usd
                     filtered_pools[pool_addr] = pool_data
                 else:
                     pools_below_threshold += 1
@@ -1453,14 +1535,17 @@ class PoolLiquidityFilter:
                 v4_states = self._fetch_v4_states_from_reth(v4_pools)
             else:
                 logger.info("   Using RPC for V4 state (fallback)")
-                from src.batchers.uniswap_v4_data import UniswapV4DataBatcher
                 from src.batchers.base import BatchConfig
-                v4_batcher = UniswapV4DataBatcher(self.web3, config=BatchConfig(batch_size=50))
+                from src.batchers.uniswap_v4_data import UniswapV4DataBatcher
+
+                v4_batcher = UniswapV4DataBatcher(
+                    self.web3, config=BatchConfig(batch_size=50)
+                )
                 v4_states = await v4_batcher.fetch_pools_chunked(list(v4_pools.keys()))
 
             for pool_addr, pool_data in v4_pools.items():
                 state = v4_states.get(pool_addr.lower())
-                if not state or 'liquidity' not in state:
+                if not state or "liquidity" not in state:
                     pools_below_threshold += 1
                     continue
 
@@ -1468,8 +1553,11 @@ class PoolLiquidityFilter:
                     pool_data, state, final_prices, token_decimals
                 )
 
-                if liquidity_usd is not None and liquidity_usd >= self.min_liquidity_v4_usd:
-                    pool_data['liquidity_usd'] = liquidity_usd
+                if (
+                    liquidity_usd is not None
+                    and liquidity_usd >= self.min_liquidity_v4_usd
+                ):
+                    pool_data["liquidity_usd"] = liquidity_usd
                     filtered_pools[pool_addr] = pool_data
                 else:
                     pools_below_threshold += 1
@@ -1480,11 +1568,11 @@ class PoolLiquidityFilter:
         logger.info("=" * 80)
 
         return {
-            'filtered_pools': filtered_pools,
-            'discovered_prices': final_prices,
-            'initial_prices': initial_prices,
-            'exchange_prices': len(initial_prices),
-            'total_prices': len(final_prices)
+            "filtered_pools": filtered_pools,
+            "discovered_prices": final_prices,
+            "initial_prices": initial_prices,
+            "exchange_prices": len(initial_prices),
+            "total_prices": len(final_prices),
         }
 
     def _calculate_v2_liquidity_from_reserves(
@@ -1492,7 +1580,7 @@ class PoolLiquidityFilter:
         pool_data: Dict,
         reserves: Dict,
         prices: Dict[str, Decimal],
-        token_decimals: Dict[str, int]
+        token_decimals: Dict[str, int],
     ) -> Optional[Decimal]:
         """
         Calculate liquidity for a V2 pool using pre-fetched reserves.
@@ -1509,8 +1597,8 @@ class PoolLiquidityFilter:
         if not reserves:
             return None
 
-        token0_addr = pool_data['token0']['address']
-        token1_addr = pool_data['token1']['address']
+        token0_addr = pool_data["token0"]["address"]
+        token1_addr = pool_data["token1"]["address"]
 
         # Get prices
         price0 = prices.get(token0_addr)
@@ -1520,14 +1608,14 @@ class PoolLiquidityFilter:
             return None
 
         # Parse reserves
-        reserve0 = Decimal(str(int(reserves['reserve0'], 16)))
-        reserve1 = Decimal(str(int(reserves['reserve1'], 16)))
+        reserve0 = Decimal(str(int(reserves["reserve0"], 16)))
+        reserve1 = Decimal(str(int(reserves["reserve1"], 16)))
         decimals0 = token_decimals.get(token0_addr, 18)
         decimals1 = token_decimals.get(token1_addr, 18)
 
         # Adjust for decimals
-        adj_reserve0 = reserve0 / Decimal(10 ** decimals0)
-        adj_reserve1 = reserve1 / Decimal(10 ** decimals1)
+        adj_reserve0 = reserve0 / Decimal(10**decimals0)
+        adj_reserve1 = reserve1 / Decimal(10**decimals1)
 
         # Calculate total liquidity
         liquidity_usd = Decimal(0)
@@ -1543,7 +1631,7 @@ class PoolLiquidityFilter:
         pool_data: Dict,
         state: Dict,
         prices: Dict[str, Decimal],
-        token_decimals: Dict[str, int]
+        token_decimals: Dict[str, int],
     ) -> Optional[Decimal]:
         """
         Calculate liquidity for a V3/V4 pool using pre-fetched state.
@@ -1557,11 +1645,11 @@ class PoolLiquidityFilter:
         Returns:
             Liquidity in USD or None if cannot calculate
         """
-        if not state or 'liquidity' not in state:
+        if not state or "liquidity" not in state:
             return None
 
-        token0_addr = pool_data['token0']['address']
-        token1_addr = pool_data['token1']['address']
+        token0_addr = pool_data["token0"]["address"]
+        token1_addr = pool_data["token1"]["address"]
 
         # Get prices
         price0 = prices.get(token0_addr)
@@ -1571,8 +1659,8 @@ class PoolLiquidityFilter:
             return None
 
         # Parse state
-        liquidity = int(state['liquidity'])
-        sqrt_price_x96 = int(state['sqrtPriceX96'])
+        liquidity = int(state["liquidity"])
+        sqrt_price_x96 = int(state["sqrtPriceX96"])
 
         if liquidity == 0:
             return None
@@ -1588,17 +1676,19 @@ class PoolLiquidityFilter:
         # Calculate rough USD value
         if price0 and price1:
             # Use geometric mean of both token values
-            value0 = liquidity_decimal * price0 / Decimal(10 ** decimals0)
-            value1 = liquidity_decimal * price1 / Decimal(10 ** decimals1)
+            value0 = liquidity_decimal * price0 / Decimal(10**decimals0)
+            value1 = liquidity_decimal * price1 / Decimal(10**decimals1)
             return (value0 + value1) / 2
         elif price0:
-            return liquidity_decimal * price0 / Decimal(10 ** decimals0)
+            return liquidity_decimal * price0 / Decimal(10**decimals0)
         elif price1:
-            return liquidity_decimal * price1 / Decimal(10 ** decimals1)
+            return liquidity_decimal * price1 / Decimal(10**decimals1)
 
         return None
 
-    def _fetch_v2_reserves_from_reth(self, pool_addresses: List[str]) -> Dict[str, Dict]:
+    def _fetch_v2_reserves_from_reth(
+        self, pool_addresses: List[str]
+    ) -> Dict[str, Dict]:
         """
         Fetch V2 pool reserves from Reth DB.
 
@@ -1609,12 +1699,15 @@ class PoolLiquidityFilter:
             Dict mapping pool_address -> reserves_dict (with hex strings)
         """
         import time
+
         start_time = time.time()
 
         results = {}
         for pool_addr in pool_addresses:
             try:
-                reserves, block_number = self.reth_loader.load_v2_pool_snapshot(pool_addr)
+                reserves, block_number = self.reth_loader.load_v2_pool_snapshot(
+                    pool_addr
+                )
 
                 # Convert to format expected by existing code (hex strings)
                 results[pool_addr.lower()] = {
@@ -1623,10 +1716,14 @@ class PoolLiquidityFilter:
                     "blockTimestampLast": reserves.get("block_timestamp_last", 0),
                 }
             except Exception as e:
-                logger.debug(f"Failed to load V2 pool {pool_addr[:10]}... from reth: {e}")
+                logger.debug(
+                    f"Failed to load V2 pool {pool_addr[:10]}... from reth: {e}"
+                )
 
         elapsed = time.time() - start_time
-        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_addresses)} V2 pools in {elapsed:.2f}s")
+        logger.info(
+            f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_addresses)} V2 pools in {elapsed:.2f}s"
+        )
 
         return results
 
@@ -1641,6 +1738,7 @@ class PoolLiquidityFilter:
             Dict mapping pool_address -> state_dict (sqrtPriceX96, liquidity, tick)
         """
         import time
+
         start_time = time.time()
 
         # Prepare configs for batch loading
@@ -1650,7 +1748,9 @@ class PoolLiquidityFilter:
             # tick_spacing is REQUIRED - cannot use defaults
             tick_spacing = pool_data.get("tick_spacing")
             if not tick_spacing:
-                logger.error(f"❌ CRITICAL: Missing tick_spacing for V3 pool {pool_addr} - skipping!")
+                logger.error(
+                    f"❌ CRITICAL: Missing tick_spacing for V3 pool {pool_addr} - skipping!"
+                )
                 logger.error(f"   Pool data: {pool_data}")
                 continue
 
@@ -1661,7 +1761,9 @@ class PoolLiquidityFilter:
             pool_configs.append(config)
 
         if not pool_configs:
-            logger.error("No valid V3 pools to load from Reth DB (all missing tick_spacing)")
+            logger.error(
+                "No valid V3 pools to load from Reth DB (all missing tick_spacing)"
+            )
             return {}
 
         # Batch load states (slot0 + liquidity only, much faster)
@@ -1683,7 +1785,9 @@ class PoolLiquidityFilter:
             }
 
         elapsed = time.time() - start_time
-        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_configs)} V3 pools in {elapsed:.2f}s")
+        logger.info(
+            f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_configs)} V3 pools in {elapsed:.2f}s"
+        )
         logger.info(f"      Total liquidity (raw): {total_liquidity:,}")
 
         return results
@@ -1699,6 +1803,7 @@ class PoolLiquidityFilter:
             Dict mapping pool_id -> state_dict (sqrtPriceX96, liquidity, tick)
         """
         import time
+
         start_time = time.time()
 
         # Prepare configs for batch loading
@@ -1710,13 +1815,17 @@ class PoolLiquidityFilter:
 
             # Validate required fields
             if not pool_manager:
-                logger.error(f"❌ CRITICAL: Missing pool_manager address for V4 pool {pool_id} - skipping!")
+                logger.error(
+                    f"❌ CRITICAL: Missing pool_manager address for V4 pool {pool_id} - skipping!"
+                )
                 logger.error(f"   Pool data: {pool_data}")
                 continue
 
             # tick_spacing is REQUIRED - cannot use defaults
             if not tick_spacing:
-                logger.error(f"❌ CRITICAL: Missing tick_spacing for V4 pool {pool_id} - skipping!")
+                logger.error(
+                    f"❌ CRITICAL: Missing tick_spacing for V4 pool {pool_id} - skipping!"
+                )
                 logger.error(f"   Pool data: {pool_data}")
                 continue
 
@@ -1728,7 +1837,9 @@ class PoolLiquidityFilter:
             pool_configs.append(config)
 
         if not pool_configs:
-            logger.error("No valid V4 pools to load from Reth DB (all missing tick_spacing)")
+            logger.error(
+                "No valid V4 pools to load from Reth DB (all missing tick_spacing)"
+            )
             return {}
 
         # Batch load states (slot0 + liquidity only, much faster)
@@ -1750,7 +1861,9 @@ class PoolLiquidityFilter:
             }
 
         elapsed = time.time() - start_time
-        logger.info(f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_configs)} V4 pools in {elapsed:.2f}s")
+        logger.info(
+            f"   ⚡ Reth DB: Loaded {len(results)}/{len(pool_configs)} V4 pools in {elapsed:.2f}s"
+        )
         logger.info(f"      Total liquidity (raw): {total_liquidity:,}")
 
         return results

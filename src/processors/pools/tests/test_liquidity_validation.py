@@ -8,24 +8,24 @@ on-chain state by:
 3. Comparing calculated vs on-chain tick data and bitmaps
 """
 
-import pytest
-import pytest_asyncio
 import asyncio
 import logging
-from typing import Dict, List, Tuple
 from pathlib import Path
-from web3 import Web3
-from eth_typing import ChecksumAddress
+from typing import Dict, List, Tuple
 
+import pytest
+import pytest_asyncio
+from eth_typing import ChecksumAddress
+from sqlalchemy import text
+from web3 import Web3
+
+from src.batchers.uniswap_v3_ticks import UniswapV3BitmapBatcher, UniswapV3TickBatcher
+from src.batchers.uniswap_v4_ticks import UniswapV4TickBatcher
 from src.core.storage.postgres_liquidity import load_liquidity_snapshot
 from src.core.storage.postgres_pools import get_database_engine
-from src.batchers.uniswap_v3_ticks import UniswapV3TickBatcher, UniswapV3BitmapBatcher
-from src.batchers.uniswap_v4_ticks import UniswapV4TickBatcher
-from sqlalchemy import text
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,10 @@ def v3_bitmap_batcher(web3):
 
 def get_processor():
     """Import and create processor at runtime."""
-    from src.processors.pools.unified_liquidity_processor import UnifiedLiquidityProcessor
+    from src.processors.pools.unified_liquidity_processor import (
+        UnifiedLiquidityProcessor,
+    )
+
     return UnifiedLiquidityProcessor(
         chain="ethereum",
         block_chunk_size=100000,
@@ -78,7 +81,7 @@ def get_pool_info(pool_address: str) -> Dict:
                 FROM network_1_dex_pools_cryo
                 WHERE address = :pool
             """),
-            {"pool": pool_address.lower()}
+            {"pool": pool_address.lower()},
         )
         row = result.fetchone()
         if not row:
@@ -108,7 +111,9 @@ class ValidationResult:
         self.liquidity_mismatches: List[Dict] = []
         self.missing_ticks: List[int] = []
         self.extra_ticks: List[int] = []
-        self.bitmap_mismatches: List[Tuple[int, int, int]] = []  # (word, calculated, onchain)
+        self.bitmap_mismatches: List[
+            Tuple[int, int, int]
+        ] = []  # (word, calculated, onchain)
 
     @property
     def tick_match_rate(self) -> float:
@@ -129,9 +134,9 @@ class ValidationResult:
     def summary(self) -> str:
         """Get validation summary."""
         lines = [
-            "="* 80,
+            "=" * 80,
             "VALIDATION SUMMARY",
-            "="* 80,
+            "=" * 80,
             f"Status: {'✅ VALID' if self.is_valid else '❌ INVALID'}",
             f"",
             f"Tick Statistics:",
@@ -143,12 +148,16 @@ class ValidationResult:
         ]
 
         if self.missing_ticks:
-            lines.append(f"Missing ticks (in on-chain but not calculated): {len(self.missing_ticks)}")
+            lines.append(
+                f"Missing ticks (in on-chain but not calculated): {len(self.missing_ticks)}"
+            )
             lines.append(f"  Examples: {self.missing_ticks[:5]}")
             lines.append("")
 
         if self.extra_ticks:
-            lines.append(f"Extra ticks (in calculated but not on-chain): {len(self.extra_ticks)}")
+            lines.append(
+                f"Extra ticks (in calculated but not on-chain): {len(self.extra_ticks)}"
+            )
             lines.append(f"  Examples: {self.extra_ticks[:5]}")
             lines.append("")
 
@@ -180,7 +189,7 @@ class ValidationResult:
                 lines.append(f"  ⚠️  {warning}")
             lines.append("")
 
-        lines.append("="* 80)
+        lines.append("=" * 80)
         return "\n".join(lines)
 
 
@@ -211,7 +220,7 @@ async def validate_v3_snapshot(
     pool_checksum = Web3.to_checksum_address(pool_address)
 
     # Get list of ticks from snapshot
-    calculated_ticks = list(snapshot['tick_data'].keys())
+    calculated_ticks = list(snapshot["tick_data"].keys())
     result.tick_count_calculated = len(calculated_ticks)
 
     if not calculated_ticks:
@@ -220,9 +229,7 @@ async def validate_v3_snapshot(
 
     # Fetch on-chain tick data
     logger.info(f"Fetching on-chain tick data for {len(calculated_ticks)} ticks...")
-    tick_result = await tick_batcher.fetch_tick_data({
-        pool_checksum: calculated_ticks
-    })
+    tick_result = await tick_batcher.fetch_tick_data({pool_checksum: calculated_ticks})
 
     if not tick_result.success:
         result.add_error(f"Failed to fetch on-chain tick data: {tick_result.error}")
@@ -235,7 +242,7 @@ async def validate_v3_snapshot(
 
     # Compare tick data
     for tick in calculated_ticks:
-        calculated_data = snapshot['tick_data'][tick]
+        calculated_data = snapshot["tick_data"][tick]
         onchain_data = onchain_ticks.get(tick)
 
         if onchain_data is None:
@@ -244,16 +251,18 @@ async def validate_v3_snapshot(
             continue
 
         # Compare liquidityNet (most important for accuracy)
-        calculated_net = calculated_data.get('liquidityNet', 0)
+        calculated_net = calculated_data.get("liquidityNet", 0)
         onchain_net = onchain_data.liquidity_net
 
         if calculated_net != onchain_net:
-            result.liquidity_mismatches.append({
-                'tick': tick,
-                'calculated_net': calculated_net,
-                'onchain_net': onchain_net,
-                'difference': abs(calculated_net - onchain_net),
-            })
+            result.liquidity_mismatches.append(
+                {
+                    "tick": tick,
+                    "calculated_net": calculated_net,
+                    "onchain_net": onchain_net,
+                    "difference": abs(calculated_net - onchain_net),
+                }
+            )
             result.add_error(
                 f"Tick {tick} liquidityNet mismatch: "
                 f"calculated={calculated_net}, onchain={onchain_net}"
@@ -262,7 +271,7 @@ async def validate_v3_snapshot(
             result.tick_match_count += 1
 
         # Compare liquidityGross
-        calculated_gross = calculated_data.get('liquidityGross', 0)
+        calculated_gross = calculated_data.get("liquidityGross", 0)
         onchain_gross = onchain_data.liquidity_gross
 
         if calculated_gross != onchain_gross:
@@ -279,15 +288,15 @@ async def validate_v3_snapshot(
 
     # Fetch and compare bitmaps
     logger.info("Validating tick bitmaps...")
-    calculated_bitmap = snapshot.get('tick_bitmap', {})
+    calculated_bitmap = snapshot.get("tick_bitmap", {})
 
     if calculated_bitmap:
         # Get word positions from calculated bitmap
         word_positions = [int(word_pos) for word_pos in calculated_bitmap.keys()]
 
-        bitmap_result = await bitmap_batcher.fetch_bitmap_data({
-            pool_checksum: word_positions
-        })
+        bitmap_result = await bitmap_batcher.fetch_bitmap_data(
+            {pool_checksum: word_positions}
+        )
 
         if bitmap_result.success:
             onchain_bitmap = bitmap_result.data.get(pool_checksum, {})
@@ -297,7 +306,9 @@ async def validate_v3_snapshot(
                 onchain_value = onchain_bitmap.get(word_pos, 0)
 
                 if calculated_value != onchain_value:
-                    result.bitmap_mismatches.append((word_pos, calculated_value, onchain_value))
+                    result.bitmap_mismatches.append(
+                        (word_pos, calculated_value, onchain_value)
+                    )
                     result.add_error(
                         f"Bitmap word {word_pos} mismatch: "
                         f"calculated={calculated_value}, onchain={onchain_value}"
@@ -316,9 +327,9 @@ async def test_validate_small_pool_snapshot(v3_tick_batcher, v3_bitmap_batcher):
     This test processes a limited block range for a pool and validates
     the snapshot against on-chain state.
     """
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info("TEST: Validate Small Pool Snapshot")
-    logger.info("="*80)
+    logger.info("=" * 80)
 
     # Use a pool that should have some activity in first 100k blocks
     pool_address = WETH_USDC_V3
@@ -337,8 +348,8 @@ async def test_validate_small_pool_snapshot(v3_tick_batcher, v3_bitmap_batcher):
         logger.info("No snapshot found, processing events first...")
         result = await processor.process_liquidity_snapshots(
             protocol="uniswap_v3",
-            start_block=pool_info['creation_block'],
-            end_block=pool_info['creation_block'] + 100000,  # First 100k blocks
+            start_block=pool_info["creation_block"],
+            end_block=pool_info["creation_block"] + 100000,  # First 100k blocks
             force_rebuild=True,
             cleanup_parquet=False,
         )
@@ -363,7 +374,9 @@ async def test_validate_small_pool_snapshot(v3_tick_batcher, v3_bitmap_batcher):
     logger.info(validation_result.summary())
 
     # Assert validation passed
-    assert validation_result.is_valid, f"Validation failed:\n{validation_result.summary()}"
+    assert validation_result.is_valid, (
+        f"Validation failed:\n{validation_result.summary()}"
+    )
     assert validation_result.tick_match_rate >= 0.95, (
         f"Tick match rate {validation_result.tick_match_rate:.2%} below 95% threshold"
     )
@@ -378,9 +391,9 @@ async def test_validate_full_pool_history(v3_tick_batcher, v3_bitmap_batcher):
     This test processes ALL events from pool creation to current block
     and validates the final snapshot matches on-chain state 100%.
     """
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info("TEST: Validate Full Pool History")
-    logger.info("="*80)
+    logger.info("=" * 80)
 
     pool_address = WETH_USDT_V3  # Use different pool than small test
     pool_info = get_pool_info(pool_address)
@@ -392,7 +405,7 @@ async def test_validate_full_pool_history(v3_tick_batcher, v3_bitmap_batcher):
     processor = get_processor()
     result = await processor.process_liquidity_snapshots(
         protocol="uniswap_v3",
-        start_block=pool_info['creation_block'],
+        start_block=pool_info["creation_block"],
         end_block=None,  # Process to latest
         force_rebuild=True,
         cleanup_parquet=False,
@@ -418,10 +431,14 @@ async def test_validate_full_pool_history(v3_tick_batcher, v3_bitmap_batcher):
     logger.info(validation_result.summary())
 
     # For full history, we expect 100% accuracy
-    assert validation_result.is_valid, f"Validation failed:\n{validation_result.summary()}"
+    assert validation_result.is_valid, (
+        f"Validation failed:\n{validation_result.summary()}"
+    )
     assert validation_result.tick_match_rate == 1.0, (
         f"Full history validation must be 100% accurate, got {validation_result.tick_match_rate:.2%}"
     )
     assert len(validation_result.missing_ticks) == 0, "Should have no missing ticks"
     assert len(validation_result.extra_ticks) == 0, "Should have no extra ticks"
-    assert len(validation_result.liquidity_mismatches) == 0, "Should have no liquidity mismatches"
+    assert len(validation_result.liquidity_mismatches) == 0, (
+        "Should have no liquidity mismatches"
+    )

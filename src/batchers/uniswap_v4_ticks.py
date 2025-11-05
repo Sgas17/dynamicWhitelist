@@ -7,19 +7,20 @@ using pre-compiled Solidity contracts via eth.call().
 
 import json
 import os
-from typing import Dict, List, Union, Optional, Tuple
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple, Union
 
-from web3 import Web3
-from eth_abi import encode, decode
+from eth_abi import decode, encode
 from eth_typing import ChecksumAddress
+from web3 import Web3
 
-from .base import BaseBatcher, BatchResult, BatchConfig, BatchError
+from .base import BaseBatcher, BatchConfig, BatchError, BatchResult
 
 
 @dataclass
 class TickLiquidityInfo:
     """Information about a specific tick's liquidity."""
+
     tick: int
     liquidity_gross: int
     liquidity_net: int
@@ -34,11 +35,7 @@ class UniswapV4TickBatcher(BaseBatcher):
     tick liquidity data for multiple pools and ticks in a single RPC call.
     """
 
-    def __init__(
-        self,
-        web3: Web3,
-        config: Optional[BatchConfig] = None
-    ):
+    def __init__(self, web3: Web3, config: Optional[BatchConfig] = None):
         """
         Initialize the V4 tick batcher.
 
@@ -56,28 +53,34 @@ class UniswapV4TickBatcher(BaseBatcher):
         try:
             contract_path = os.path.join(
                 os.path.dirname(__file__),
-                "..", "..", "foundry", "out", "UniswapV4TickGetter.sol",
-                "UniswapV4TickGetter.json"
+                "..",
+                "..",
+                "foundry",
+                "out",
+                "UniswapV4TickGetter.sol",
+                "UniswapV4TickGetter.json",
             )
 
-            with open(contract_path, 'r') as f:
+            with open(contract_path, "r") as f:
                 contract_data = json.load(f)
-                return contract_data['bytecode']['object']
+                return contract_data["bytecode"]["object"]
 
         except Exception as e:
             raise BatchError(f"Failed to load V4 tick getter bytecode: {e}")
 
-    async def batch_call(self, addresses: List[str], block_identifier: Union[int, str] = 'latest') -> BatchResult:
+    async def batch_call(
+        self, addresses: List[str], block_identifier: Union[int, str] = "latest"
+    ) -> BatchResult:
         """
         Implementation of abstract batch_call method for compatibility.
         Not used directly - use fetch_tick_data instead.
         """
-        return BatchResult(success=False, error="Use fetch_tick_data method instead", data={})
+        return BatchResult(
+            success=False, error="Use fetch_tick_data method instead", data={}
+        )
 
     async def fetch_tick_data(
-        self,
-        pool_ticks: Dict[str, List[int]],
-        block_number: Optional[int] = None
+        self, pool_ticks: Dict[str, List[int]], block_number: Optional[int] = None
     ) -> BatchResult:
         """
         Batch fetch tick data for multiple pools.
@@ -97,19 +100,19 @@ class UniswapV4TickBatcher(BaseBatcher):
             requests = []
             for pool_id_str, ticks in pool_ticks.items():
                 # Convert hex string to bytes32
-                pool_id_bytes = bytes.fromhex(pool_id_str.replace('0x', ''))
+                pool_id_bytes = bytes.fromhex(pool_id_str.replace("0x", ""))
                 requests.append((pool_id_bytes, ticks))
 
             # Encode constructor arguments
-            constructor_args = encode(['(bytes32,int24[])[]'], [requests])
+            constructor_args = encode(["(bytes32,int24[])[]"], [requests])
             call_data = self.contract_bytecode + constructor_args.hex()
 
             # Make the call
-            block_id = block_number if block_number is not None else 'latest'
-            result = self.web3.eth.call({'data': call_data}, block_identifier=block_id)
+            block_id = block_number if block_number is not None else "latest"
+            result = self.web3.eth.call({"data": call_data}, block_identifier=block_id)
 
             # Decode response
-            block_num, tick_data = decode(['uint256', 'bytes32[][]'], result)
+            block_num, tick_data = decode(["uint256", "bytes32[][]"], result)
 
             # Process results
             processed_data = {}
@@ -118,21 +121,19 @@ class UniswapV4TickBatcher(BaseBatcher):
                 for j, tick in enumerate(ticks):
                     if i < len(tick_data) and j < len(tick_data[i]):
                         gross_bytes = tick_data[i][j][:16]  # First 16 bytes for uint128
-                        gross = int.from_bytes(gross_bytes, byteorder='big')
+                        gross = int.from_bytes(gross_bytes, byteorder="big")
                         net_bytes = tick_data[i][j][16:32]  # Next 16 bytes for int128
-                        net = int.from_bytes(net_bytes, byteorder='big', signed=True)
+                        net = int.from_bytes(net_bytes, byteorder="big", signed=True)
                         pool_data[tick] = TickLiquidityInfo(
                             tick=tick,
                             liquidity_gross=gross,
                             liquidity_net=net,
-                            is_initialized=gross > 0
+                            is_initialized=gross > 0,
                         )
                 processed_data[pool_id] = pool_data
 
             return BatchResult(
-                success=True,
-                data=processed_data,
-                block_number=int(block_num)
+                success=True, data=processed_data, block_number=int(block_num)
             )
 
         except Exception as e:
@@ -140,7 +141,7 @@ class UniswapV4TickBatcher(BaseBatcher):
                 success=False,
                 error=f"Failed to fetch V4 tick data: {e}",
                 data={},
-                block_number=None
+                block_number=None,
             )
 
 
@@ -152,11 +153,7 @@ class UniswapV4BitmapBatcher(BaseBatcher):
     tick bitmap data for multiple pools in a single RPC call.
     """
 
-    def __init__(
-        self,
-        web3: Web3,
-        config: Optional[BatchConfig] = None
-    ):
+    def __init__(self, web3: Web3, config: Optional[BatchConfig] = None):
         """
         Initialize the V4 bitmap batcher.
 
@@ -174,28 +171,36 @@ class UniswapV4BitmapBatcher(BaseBatcher):
         try:
             contract_path = os.path.join(
                 os.path.dirname(__file__),
-                "..", "..", "foundry", "out", "UniswapV4TickGetter.sol",
-                "UniswapV4TickBitmapGetter.json"
+                "..",
+                "..",
+                "foundry",
+                "out",
+                "UniswapV4TickGetter.sol",
+                "UniswapV4TickBitmapGetter.json",
             )
 
-            with open(contract_path, 'r') as f:
+            with open(contract_path, "r") as f:
                 contract_data = json.load(f)
-                return contract_data['bytecode']['object']
+                return contract_data["bytecode"]["object"]
 
         except Exception as e:
             raise BatchError(f"Failed to load V4 bitmap getter bytecode: {e}")
 
-    async def batch_call(self, addresses: List[str], block_identifier: Union[int, str] = 'latest') -> BatchResult:
+    async def batch_call(
+        self, addresses: List[str], block_identifier: Union[int, str] = "latest"
+    ) -> BatchResult:
         """
         Implementation of abstract batch_call method for compatibility.
         Not used directly - use fetch_bitmap_data instead.
         """
-        return BatchResult(success=False, error="Use fetch_bitmap_data method instead", data={})
+        return BatchResult(
+            success=False, error="Use fetch_bitmap_data method instead", data={}
+        )
 
     async def fetch_bitmap_data(
         self,
         pool_word_positions: Dict[ChecksumAddress, List[int]],
-        block_number: Optional[int] = None
+        block_number: Optional[int] = None,
     ) -> BatchResult:
         """
         Batch fetch bitmap data for multiple pools.
@@ -215,19 +220,19 @@ class UniswapV4BitmapBatcher(BaseBatcher):
             requests = []
             for pool_id_str, word_positions in pool_word_positions.items():
                 # Convert hex string to bytes32
-                pool_id_bytes = bytes.fromhex(pool_id_str.replace('0x', ''))
+                pool_id_bytes = bytes.fromhex(pool_id_str.replace("0x", ""))
                 requests.append((pool_id_bytes, word_positions))
 
             # Encode constructor arguments
-            constructor_args = encode(['(bytes32,int16[])[]'], [requests])
+            constructor_args = encode(["(bytes32,int16[])[]"], [requests])
             call_data = self.contract_bytecode + constructor_args.hex()
 
             # Make the call
-            block_id = block_number if block_number is not None else 'latest'
-            result = self.web3.eth.call({'data': call_data}, block_identifier=block_id)
+            block_id = block_number if block_number is not None else "latest"
+            result = self.web3.eth.call({"data": call_data}, block_identifier=block_id)
 
             # Decode response
-            block_num, bitmap_data = decode(['uint256', 'uint256[][]'], result)
+            block_num, bitmap_data = decode(["uint256", "uint256[][]"], result)
 
             # Process results
             processed_data = {}
@@ -239,9 +244,7 @@ class UniswapV4BitmapBatcher(BaseBatcher):
                 processed_data[pool_id] = pool_data
 
             return BatchResult(
-                success=True,
-                data=processed_data,
-                block_number=int(block_num)
+                success=True, data=processed_data, block_number=int(block_num)
             )
 
         except Exception as e:
@@ -249,13 +252,11 @@ class UniswapV4BitmapBatcher(BaseBatcher):
                 success=False,
                 error=f"Failed to fetch V4 bitmap data: {e}",
                 data={},
-                block_number=None
+                block_number=None,
             )
 
     def find_initialized_ticks(
-        self,
-        bitmaps: Dict[int, int],
-        tick_spacing: int = 60
+        self, bitmaps: Dict[int, int], tick_spacing: int = 60
     ) -> List[int]:
         """
         Find all initialized ticks from bitmap data.
@@ -285,7 +286,9 @@ class UniswapV4BitmapBatcher(BaseBatcher):
         return sorted(initialized_ticks)
 
     @staticmethod
-    def calculate_word_positions(lower_tick: int, upper_tick: int, tick_spacing: int = 1) -> List[int]:
+    def calculate_word_positions(
+        lower_tick: int, upper_tick: int, tick_spacing: int = 1
+    ) -> List[int]:
         """
         Calculate bitmap word positions needed for tick range.
 

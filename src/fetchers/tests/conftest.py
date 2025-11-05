@@ -1,6 +1,9 @@
 """Test configuration for fetchers."""
-import pytest
+
 from unittest.mock import AsyncMock, Mock
+
+import pytest
+
 from src.config import ConfigManager
 
 
@@ -29,5 +32,5 @@ def sample_cryo_response():
         "log_index": 0,
         "address": "0xa0b86a33e6c6c7c8e1f2e3f4a5b6c7d8e9f0a1b2",
         "topics": ["0x1234..."],
-        "data": "0x5678..."
+        "data": "0x5678...",
     }

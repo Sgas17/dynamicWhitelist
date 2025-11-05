@@ -14,20 +14,20 @@ For example, a pool with tick_spacing=60 can only have ticks at -60, 0, 60, 120,
 import asyncio
 import logging
 from pathlib import Path
+
+from sqlalchemy import text
 from web3 import Web3
 
-from src.processors.pools.unified_liquidity_processor import UnifiedLiquidityProcessor
+from src.batchers.uniswap_v3_ticks import UniswapV3BitmapBatcher, UniswapV3TickBatcher
+from src.config import ConfigManager
 from src.core.storage.postgres_liquidity import load_liquidity_snapshot
 from src.core.storage.postgres_pools import get_database_engine
 from src.fetchers.cryo_fetcher import CryoFetcher
-from src.config import ConfigManager
-from src.batchers.uniswap_v3_ticks import UniswapV3TickBatcher, UniswapV3BitmapBatcher
-from sqlalchemy import text
+from src.processors.pools.unified_liquidity_processor import UnifiedLiquidityProcessor
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -48,25 +48,27 @@ async def test_snapshot_vs_live_state():
     Complete test: Build snapshot from events and compare to live RPC state.
     """
 
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info("V3 SNAPSHOT VS LIVE STATE VALIDATION")
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info("")
 
     # Step 1: Get pool from database
     logger.info("Step 1: Getting V3 pool from database...")
-    logger.info("-"*80)
+    logger.info("-" * 80)
 
     engine = get_database_engine()
     with engine.connect() as conn:
         # Get WBTC/USDC 0.3% - highly liquid, good test case
-        result = conn.execute(text("""
+        result = conn.execute(
+            text("""
             SELECT address, creation_block, fee, tick_spacing
             FROM network_1_dex_pools_cryo
             WHERE factory = '0x1f98431c8ad98523631ae4a59f267346ea31f984'
             AND address = '0x99ac8ca7087fa4a2a1fb6357269965a2014abc35'
             LIMIT 1
-        """)).fetchone()
+        """)
+        ).fetchone()
 
         if not result:
             logger.error("Pool not found!")
@@ -85,7 +87,7 @@ async def test_snapshot_vs_live_state():
 
     # Step 2: Fetch ALL events from creation
     logger.info("Step 2: Fetching ALL liquidity events...")
-    logger.info("-"*80)
+    logger.info("-" * 80)
 
     config = ConfigManager()
     data_dir = Path(config.base.DATA_DIR)
@@ -104,7 +106,7 @@ async def test_snapshot_vs_live_state():
         end_block=current_block,
         contracts=[pool_address],
         events=[V3_MINT_EVENT, V3_BURN_EVENT],
-        output_dir=str(output_dir)
+        output_dir=str(output_dir),
     )
 
     if not result.success:
@@ -116,7 +118,7 @@ async def test_snapshot_vs_live_state():
 
     # Step 3: Build snapshot from events
     logger.info("Step 3: Building snapshot from events...")
-    logger.info("-"*80)
+    logger.info("-" * 80)
 
     processor = UnifiedLiquidityProcessor(
         chain="ethereum",
@@ -138,7 +140,7 @@ async def test_snapshot_vs_live_state():
 
     # Step 4: Load snapshot
     logger.info("Step 4: Loading snapshot from database...")
-    logger.info("-"*80)
+    logger.info("-" * 80)
 
     snapshot = load_liquidity_snapshot(pool_address, chain_id=1)
 
@@ -146,8 +148,8 @@ async def test_snapshot_vs_live_state():
         logger.error("❌ No snapshot found!")
         return
 
-    snapshot_ticks = snapshot['tick_data']
-    snapshot_bitmap = snapshot['tick_bitmap']
+    snapshot_ticks = snapshot["tick_data"]
+    snapshot_bitmap = snapshot["tick_bitmap"]
 
     logger.info(f"✓ Snapshot loaded")
     logger.info(f"  Snapshot block: {snapshot['snapshot_block']:,}")
@@ -156,9 +158,13 @@ async def test_snapshot_vs_live_state():
     logger.info("")
 
     # Validate that all snapshot ticks are valid for tick_spacing
-    invalid_ticks = [int(t) for t in snapshot_ticks.keys() if int(t) % tick_spacing != 0]
+    invalid_ticks = [
+        int(t) for t in snapshot_ticks.keys() if int(t) % tick_spacing != 0
+    ]
     if invalid_ticks:
-        logger.error(f"❌ Found {len(invalid_ticks)} invalid ticks in snapshot (not divisible by {tick_spacing})")
+        logger.error(
+            f"❌ Found {len(invalid_ticks)} invalid ticks in snapshot (not divisible by {tick_spacing})"
+        )
         logger.error(f"   First 10: {invalid_ticks[:10]}")
         return
 
@@ -167,7 +173,7 @@ async def test_snapshot_vs_live_state():
 
     # Step 5: Fetch LIVE state using batchers
     logger.info("Step 5: Fetching LIVE state from RPC...")
-    logger.info("-"*80)
+    logger.info("-" * 80)
 
     # First, get bitmap to find all initialized ticks
     bitmap_batcher = UniswapV3BitmapBatcher(w3)
@@ -177,7 +183,9 @@ async def test_snapshot_vs_live_state():
         MIN_TICK, MAX_TICK, tick_spacing
     )
 
-    logger.info(f"Fetching {len(word_positions):,} bitmap words (tick_spacing={tick_spacing})...")
+    logger.info(
+        f"Fetching {len(word_positions):,} bitmap words (tick_spacing={tick_spacing})..."
+    )
 
     bitmap_result = await bitmap_batcher.fetch_bitmap_data(
         {Web3.to_checksum_address(pool_address): word_positions}
@@ -223,7 +231,7 @@ async def test_snapshot_vs_live_state():
 
     # Step 6: Compare snapshot to live state
     logger.info("Step 6: Comparing snapshot to live state...")
-    logger.info("-"*80)
+    logger.info("-" * 80)
 
     # Compare tick counts
     snapshot_tick_count = len(snapshot_ticks)
@@ -248,8 +256,8 @@ async def test_snapshot_vs_live_state():
         snap_data = snapshot_ticks[str(tick)]
         live_data = live_ticks[tick]
 
-        snap_gross = int(snap_data['liquidityGross'])
-        snap_net = int(snap_data['liquidityNet'])
+        snap_gross = int(snap_data["liquidityGross"])
+        snap_net = int(snap_data["liquidityNet"])
 
         live_gross = live_data.liquidity_gross
         live_net = live_data.liquidity_net
@@ -270,7 +278,9 @@ async def test_snapshot_vs_live_state():
         sample_snap_only = sorted(list(snapshot_tick_set - live_tick_set))[:5]
         for tick in sample_snap_only:
             snap_data = snapshot_ticks[str(tick)]
-            logger.warning(f"   Tick {tick}: gross={snap_data['liquidityGross']}, net={snap_data['liquidityNet']}")
+            logger.warning(
+                f"   Tick {tick}: gross={snap_data['liquidityGross']}, net={snap_data['liquidityNet']}"
+            )
 
     # Check ticks only in live
     live_only = len(live_tick_set - snapshot_tick_set)
@@ -279,7 +289,9 @@ async def test_snapshot_vs_live_state():
         sample_live_only = sorted(list(live_tick_set - snapshot_tick_set))[:5]
         for tick in sample_live_only:
             live_data = live_ticks[tick]
-            logger.warning(f"   Tick {tick}: gross={live_data.liquidity_gross}, net={live_data.liquidity_net}")
+            logger.warning(
+                f"   Tick {tick}: gross={live_data.liquidity_gross}, net={live_data.liquidity_net}"
+            )
 
     logger.info("")
 
@@ -306,9 +318,9 @@ async def test_snapshot_vs_live_state():
     logger.info("")
 
     # Summary
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info("VALIDATION SUMMARY")
-    logger.info("="*80)
+    logger.info("=" * 80)
     logger.info(f"Pool: {pool_address}")
     logger.info(f"Tick spacing: {tick_spacing}")
     logger.info(f"Snapshot block: {snapshot['snapshot_block']:,}")
@@ -342,7 +354,7 @@ async def test_snapshot_vs_live_state():
         logger.info(f"❌ POOR - {match_rate:.2f}% match rate")
         logger.info("   Significant discrepancies - investigation needed")
 
-    logger.info("="*80)
+    logger.info("=" * 80)
 
 
 if __name__ == "__main__":
