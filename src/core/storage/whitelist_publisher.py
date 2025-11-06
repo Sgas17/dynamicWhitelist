@@ -36,10 +36,15 @@ class WhitelistPublisher:
 
     async def __aenter__(self):
         """Async context manager entry."""
-        # Initialize Redis cache with dict config
-        redis_config = self.config.database.get_redis_connection_kwargs()
-        self.redis = RedisStorage(redis_config)
-        await self.redis.connect()
+        # Initialize Redis cache with dict config (optional - skip if not available)
+        try:
+            redis_config = self.config.database.get_redis_connection_kwargs()
+            self.redis = RedisStorage(redis_config)
+            await self.redis.connect()
+            logger.info("✓ Redis storage connected")
+        except Exception as e:
+            logger.warning(f"⚠ Redis not available, skipping: {e}")
+            self.redis = None
 
         # Initialize JSON storage with dict config
         json_config = {
@@ -122,8 +127,8 @@ class WhitelistPublisher:
         """Publish whitelist to Redis cache."""
         try:
             if not self.redis:
-                logger.error("Redis not initialized")
-                return False
+                logger.debug("Redis not available, skipping")
+                return True  # Not a failure, just skipped
 
             # Store whitelist with metadata
             success = await self.redis.set_whitelist(chain, whitelist)
