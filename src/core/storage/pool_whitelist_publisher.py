@@ -110,8 +110,13 @@ class PoolWhitelistNatsPublisher:
         # Publish minimal message (for ExEx)
         if publish_minimal:
             try:
+                # Extract pool addresses and protocols (1:1 correspondence)
+                pool_addresses = [pool["address"] for pool in pools]
+                protocols = [pool["protocol"] for pool in pools]
+
                 minimal_msg = {
-                    "pools": [pool["address"] for pool in pools],
+                    "pools": pool_addresses,
+                    "protocols": protocols,
                     "chain": chain,
                     "timestamp": timestamp,
                 }
