@@ -2,11 +2,12 @@
 Main orchestrator for the complete whitelist and pool filtering pipeline.
 
 Pipeline stages:
-1. Build token whitelist from multiple sources
-2. Filter Stage 1 pools: whitelisted + trusted tokens
-3. Calculate token prices from Stage 1
-4. Filter Stage 2 pools: whitelisted + any token with trust path
-5. Publish whitelist to Redis, NATS, and JSON storage
+1. Build token whitelist from multiple sources (CEX, cross-chain, top transfers)
+2. Query pools from database (V2, V3, V4 pools with whitelisted/trusted tokens)
+3. Filter pools with price discovery (fetch liquidity and prices via RPC/RETH)
+4. Prepare whitelist for publishing (format token and pool data)
+5. Publish whitelist (NATS, JSON, Redis if available)
+6. Save detailed results (pipeline results and filtered pools to JSON)
 """
 
 import asyncio
@@ -16,7 +17,7 @@ import sys
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 # Add project root to Python path for direct script execution
 if __name__ == "__main__":
@@ -24,6 +25,15 @@ if __name__ == "__main__":
     sys.path.insert(0, str(project_root))
 
 from web3 import Web3
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that converts Decimal to string."""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, Decimal):
+            return str(obj)
+        return super().default(obj)
 
 from src.config import ConfigManager
 from src.core.storage.postgres import PostgresStorage
@@ -627,6 +637,7 @@ class WhitelistOrchestrator:
                 },
                 f,
                 indent=2,
+                cls=DecimalEncoder,
             )
         self.logger.info(f"💾 Saved whitelist by stage to {whitelist_stages_path}")
 
@@ -662,7 +673,7 @@ class WhitelistOrchestrator:
         # Save complete results
         results_path = self.output_dir / f"pipeline_results_{chain}.json"
         with open(results_path, "w") as f:
-            json.dump(results, f, indent=2)
+            json.dump(results, f, indent=2, cls=DecimalEncoder)
         self.logger.info(f"Saved complete results to {results_path}")
 
         # Save pools separately for easy access
@@ -676,7 +687,7 @@ class WhitelistOrchestrator:
             "pools": filtered_pools,
         }
         with open(pools_path, "w") as f:
-            json.dump(pools_data, f, indent=2)
+            json.dump(pools_data, f, indent=2, cls=DecimalEncoder)
         self.logger.info(f"Saved filtered pools to {pools_path}")
 
         self.logger.info("=" * 80)
