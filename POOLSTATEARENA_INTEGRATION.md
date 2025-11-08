@@ -41,7 +41,6 @@ The full NATS message includes all metadata needed for poolStateArena to:
       "protocol": "v4",
       "fee": 3000,
       "tick_spacing": 60,
-      "hooks": "0x1234567890123456789012345678901234567890",
       "factory": "0x0000000000000000000000000000000000000000",
       "token0": {
         "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -69,9 +68,10 @@ The full NATS message includes all metadata needed for poolStateArena to:
 | `pool_id` | ❌ N/A | ❌ N/A | ✅ Required | 32-byte pool identifier |
 | `fee` | ❌ N/A | ✅ Required | ✅ Required | Fee for swap calculations |
 | `tick_spacing` | ❌ N/A | ✅ Required | ✅ Required | Tick validation & iteration |
-| `hooks` | ❌ N/A | ❌ N/A | ⚠️ Optional | V4 hook contract address |
 | `token0.decimals` | ✅ Required | ✅ Required | ✅ Required | Amount conversions |
 | `token1.decimals` | ✅ Required | ✅ Required | ✅ Required | Amount conversions |
+
+**Note**: V4 hook support is not included in initial implementation. Only V4 pools with no hooks (zero address) are supported. When hook support is added later, the arena will be rebuilt from scratch.
 
 ## poolStateArena Struct Changes
 
@@ -173,21 +173,24 @@ pub struct UniswapV4PoolData<const TICK_CAPACITY: usize, const BITMAP_CAPACITY: 
 
     // V4-specific metadata
     pub pool_id: [u8; 32],     // ← 32-byte pool identifier
-    pub hooks: [u8; 20],       // ← Hook contract address
-    pub fee: u32,              // ← May be 0 if hook-managed
+    pub fee: u32,              // ← Fee (dynamic in V4)
     pub tick_spacing: i32,     // ← Independent of fee in V4
     pub token0_decimals: u8,
     pub token1_decimals: u8,
 
-    pub _pad: [u8; 2],
+    pub _pad: [u8; 10],        // Padding for alignment
 
     // Existing fields
     pub token0: [u8; 20],
     pub token1: [u8; 20],
-    pub common: CommonPoolFields,  // Note: pool_id in common is different!
+    pub common: CommonPoolFields,
     pub ticks: [(i32, i128); TICK_CAPACITY],
     pub tick_bitmap: [(i16, [u8; 32]); BITMAP_CAPACITY],
 }
+
+// Note: Hook support omitted for initial implementation
+// Only V4 pools with hooks = 0x0 are supported
+// When adding hook support later, struct will be modified and arena rebuilt
 
 // Type aliases for V4 tiers
 pub type UniswapV4LowPoolData = UniswapV4PoolData<50, 10>;
@@ -375,14 +378,16 @@ V3 Pool:
   Total:           10 bytes per pool
 
 V4 Pool:
-  pool_id:         32 bytes (replaces 20-byte address in some places)
-  hooks:           20 bytes
+  pool_id:         32 bytes (in addition to address field)
   fee:              4 bytes
   tick_spacing:     4 bytes
   token0_decimals:  1 byte
   token1_decimals:  1 byte
   ----------------
-  Total:           62 bytes per pool (but 12 bytes net if pool_id replaces address)
+  Total:           42 bytes per pool
+
+Note: Hooks field NOT included (saves 20 bytes per pool)
+When hooks are added later, arena will be rebuilt with updated struct.
 ```
 
 ### Total System Impact
