@@ -408,17 +408,36 @@ class WhitelistOrchestrator:
                     "factory": pool_data["factory"],
                 }
 
-                # Add V4-specific pool_id field
+                # Add V4-specific pool_id field (32-byte identifier)
                 if "pool_id" in pool_data:
                     pool_dict["pool_id"] = pool_data["pool_id"]
 
-                # Add optional fields
-                if "fee" in pool_data and pool_data["fee"] is not None:
+                # Add protocol-specific required fields for V3/V4
+                # V2 pools don't have fee/tick_spacing
+                if pool_data["protocol"] in ["v3", "v4"]:
+                    # Fee is required for V3/V4 (needed for swap calculations)
+                    if "fee" not in pool_data or pool_data["fee"] is None:
+                        pool_id = pool_data.get("pool_id", pool_data.get("address"))
+                        self.logger.warning(
+                            f"Skipping {pool_data['protocol']} pool {pool_id}: "
+                            f"missing fee"
+                        )
+                        skipped_pools += 1
+                        continue
+
+                    # tick_spacing is required for V3/V4 (needed for tick validation)
+                    if "tick_spacing" not in pool_data or pool_data[
+                        "tick_spacing"
+                    ] is None:
+                        pool_id = pool_data.get("pool_id", pool_data.get("address"))
+                        self.logger.warning(
+                            f"Skipping {pool_data['protocol']} pool {pool_id}: "
+                            f"missing tick_spacing"
+                        )
+                        skipped_pools += 1
+                        continue
+
                     pool_dict["fee"] = pool_data["fee"]
-                if (
-                    "tick_spacing" in pool_data
-                    and pool_data["tick_spacing"] is not None
-                ):
                     pool_dict["tick_spacing"] = pool_data["tick_spacing"]
 
                 pools_for_nats.append(pool_dict)
