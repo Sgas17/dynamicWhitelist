@@ -92,6 +92,98 @@ class WhitelistManager:
         self.nc: Optional[nats.Client] = None
         self._ensure_schema()
 
+    @staticmethod
+    def _get_pool_key(pool: Dict[str, Any]) -> str:
+        """
+        Generate unique key for pool comparison.
+        
+        For V4 pools, use pool_id as the unique identifier.
+        For V2/V3 pools, use address.
+        
+        Args:
+            pool: Pool dictionary with 'address', 'protocol', and optionally 'pool_id'
+            
+        Returns:
+            Unique string key for the pool
+        """
+        if pool.get("protocol") == "v4" and "pool_id" in pool:
+            return pool["pool_id"]
+        return pool["address"]
+
+    @staticmethod
+    def _transform_pool_for_arena(pool: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform pool data to pool_state_arena format.
+        
+        Converts from dynamicWhitelist format to the format expected by
+        pool_state_arena's WhitelistMessage/PoolInfo structure.
+        
+        Args:
+            pool: Pool dict from dynamicWhitelist with structure:
+                {
+                    "address": str,
+                    "pool_id": str (V4 only),
+                    "token0": {"address": str, "decimals": int, ...},
+                    "token1": {"address": str, "decimals": int, ...},
+                    "protocol": "v2"|"v3"|"v4",
+                    "fee": int (optional),
+                    "tick_spacing": int (optional),
+                    ...
+                }
+                
+        Returns:
+            Dict in pool_state_arena format:
+                {
+                    "id": str,  # address for V2/V3, pool_id for V4
+                    "protocol": "uniswap_v2"|"uniswap_v3"|"uniswap_v4",
+                    "token0": str,
+                    "token1": str,
+                    "fee": int (optional),
+                    "tick_spacing": int (optional),
+                    "token0_decimals": int (optional),
+                    "token1_decimals": int (optional),
+                }
+        """
+        # Use pool_id for V4, address for V2/V3
+        pool_id = pool.get("pool_id", pool["address"])
+        
+        # Map protocol names to pool_state_arena format
+        protocol_map = {
+            "v2": "uniswap_v2",
+            "v3": "uniswap_v3",
+            "v4": "uniswap_v4",
+        }
+        protocol = protocol_map.get(pool["protocol"], pool["protocol"])
+        
+        # Extract token addresses and decimals
+        token0_addr = pool["token0"]["address"]
+        token1_addr = pool["token1"]["address"]
+        token0_decimals = pool["token0"].get("decimals")
+        token1_decimals = pool["token1"].get("decimals")
+        
+        # Build transformed pool
+        transformed = {
+            "id": pool_id,
+            "protocol": protocol,
+            "token0": token0_addr,
+            "token1": token1_addr,
+        }
+        
+        # Add optional fields
+        if "fee" in pool and pool["fee"] is not None:
+            transformed["fee"] = pool["fee"]
+        
+        if "tick_spacing" in pool and pool["tick_spacing"] is not None:
+            transformed["tick_spacing"] = pool["tick_spacing"]
+        
+        if token0_decimals is not None:
+            transformed["token0_decimals"] = token0_decimals
+        
+        if token1_decimals is not None:
+            transformed["token1_decimals"] = token1_decimals
+        
+        return transformed
+
     def _ensure_schema(self):
         """Create whitelist_snapshots table if it doesn't exist."""
         schema_sql = """
@@ -252,7 +344,8 @@ class WhitelistManager:
             await self.connect_nats()
 
         # Convert new_pools list to dict for comparison
-        new_whitelist = {pool["address"]: pool for pool in new_pools}
+        # Use pool_id for V4 pools, address for V2/V3 pools
+        new_whitelist = {self._get_pool_key(pool): pool for pool in new_pools}
 
         # Load last published whitelist
         old_whitelist, last_snapshot_id = self.load_last_whitelist(chain)
@@ -338,13 +431,11 @@ class WhitelistManager:
         minimal_subject = f"whitelist.pools.{chain}.minimal"
         await self.nc.publish(minimal_subject, json.dumps(minimal_msg).encode())
 
-        # Full message (for poolStateArena)
+        # Full message (for poolStateArena) - transform to expected format
+        transformed_pools = [self._transform_pool_for_arena(pool) for pool in pools]
         full_msg = {
-            "type": "add",
-            "pools": pools,
             "chain": chain,
-            "timestamp": timestamp,
-            "snapshot_id": snapshot_id,
+            "pools": transformed_pools,
         }
         full_subject = f"whitelist.pools.{chain}.full"
         await self.nc.publish(full_subject, json.dumps(full_msg).encode())
@@ -401,13 +492,11 @@ class WhitelistManager:
         minimal_subject = f"whitelist.pools.{chain}.minimal"
         await self.nc.publish(minimal_subject, json.dumps(minimal_msg).encode())
 
-        # Full message (for poolStateArena)
+        # Full message (for poolStateArena) - transform to expected format
+        transformed_pools = [self._transform_pool_for_arena(pool) for pool in pools]
         full_msg = {
-            "type": "full",
-            "pools": pools,
             "chain": chain,
-            "timestamp": timestamp,
-            "snapshot_id": snapshot_id,
+            "pools": transformed_pools,
         }
         full_subject = f"whitelist.pools.{chain}.full"
         await self.nc.publish(full_subject, json.dumps(full_msg).encode())
@@ -424,10 +513,11 @@ class WhitelistManager:
         """
 
         # Prepare values for bulk insert
+        # Use pool_id for V4 pools, address for V2/V3 pools
         values = [
             (
                 chain,
-                pool["address"],
+                self._get_pool_key(pool),
                 json.dumps(pool),
                 snapshot_id,
                 datetime.now(timezone.utc),
