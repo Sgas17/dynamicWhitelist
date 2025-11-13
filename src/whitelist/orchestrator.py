@@ -158,13 +158,14 @@ class WhitelistOrchestrator:
         # This includes Stage 1 (whitelisted+trusted) and Stage 2 (whitelisted+whitelisted)
         all_tokens_for_query = whitelisted_tokens | trusted_token_addresses
 
-        # Query pools from network_1_dex_pools_cryo (includes tick_spacing and additional_data)
+        # Query pools from network_1_dex_pools_cryo (includes fee, tick_spacing and additional_data)
         query = """
         SELECT DISTINCT
             address,
             LOWER(asset0) as token0,
             LOWER(asset1) as token1,
             LOWER(factory) as factory,
+            fee,
             tick_spacing,
             additional_data
         FROM network_1_dex_pools_cryo
@@ -185,6 +186,7 @@ class WhitelistOrchestrator:
             factory = row["factory"].lower()
             token0 = row["token0"]
             token1 = row["token1"]
+            fee = row["fee"]
             tick_spacing = row["tick_spacing"]
             additional_data = row.get("additional_data")
 
@@ -226,6 +228,7 @@ class WhitelistOrchestrator:
                     "token1": {"address": token1},
                     "factory": factory,
                     "protocol": protocol,
+                    "fee": fee,
                     "tick_spacing": tick_spacing,
                 }
             else:
@@ -235,6 +238,7 @@ class WhitelistOrchestrator:
                     "token1": {"address": token1},
                     "factory": factory,
                     "protocol": protocol,
+                    "fee": fee,  # Include for V3 (will be None for V2)
                     "tick_spacing": tick_spacing,  # Include for V3/V4 (will be None for V2)
                 }
 
