@@ -42,7 +42,7 @@ from src.core.storage.whitelist_publisher import WhitelistPublisher
 from src.core.whitelist_manager import WhitelistManager
 from src.whitelist.builder import TokenWhitelistBuilder
 from src.whitelist.liquidity_filter import PoolLiquidityFilter
-from src.whitelist.types import PoolInfo, TokenPrice
+from src.whitelist.pool_types import PoolInfo, TokenPrice
 
 logger = logging.getLogger(__name__)
 
