@@ -35,13 +35,18 @@ class DecimalEncoder(json.JSONEncoder):
             return str(obj)
         return super().default(obj)
 
+
 from src.config import ConfigManager
 from src.core.storage.postgres import PostgresStorage
 from src.core.storage.token_whitelist_publisher import TokenWhitelistNatsPublisher
 from src.core.storage.whitelist_publisher import WhitelistPublisher
 from src.core.whitelist_manager import WhitelistManager
 from src.whitelist.builder import TokenWhitelistBuilder
-from src.whitelist.liquidity_filter import PoolLiquidityFilter
+from src.whitelist.liquidity_filter import (
+    PoolLiquidityFilter,
+    WETH_ADDRESS,
+    ZERO_ADDRESS,
+)
 from src.whitelist.pool_types import PoolInfo, TokenPrice
 
 logger = logging.getLogger(__name__)
@@ -121,6 +126,32 @@ class WhitelistOrchestrator:
             if "decimals" in info
         }
 
+        # V4 pools use zero address for native ETH - treat as WETH for filtering
+        # Add zero address to token mappings using WETH's metadata
+        weth_addr = WETH_ADDRESS.lower()
+        zero_addr = ZERO_ADDRESS.lower()
+        weth_info = token_info.get(weth_addr, {})
+        if weth_info:
+            # Add zero address with WETH metadata for V4 native ETH pools
+            token_info[zero_addr] = {
+                "symbol": "ETH",  # Use ETH symbol for native ETH
+                "decimals": weth_info.get("decimals", 18),
+                "name": "Ether",
+            }
+            token_symbols[zero_addr] = "ETH"
+            token_decimals[zero_addr] = weth_info.get("decimals", 18)
+            self.logger.info(
+                "✅ Added zero address (native ETH) to token mappings for V4"
+            )
+        else:
+            # Fallback: Add zero address with default ETH values
+            token_info[zero_addr] = {"symbol": "ETH", "decimals": 18, "name": "Ether"}
+            token_symbols[zero_addr] = "ETH"
+            token_decimals[zero_addr] = 18
+            self.logger.warning(
+                "⚠️  WETH not in whitelist, using default values for native ETH"
+            )
+
         # Get trusted tokens from config for the specified chain
         all_trusted_tokens = self.config.chains.get_trusted_tokens_for_chain()
         trusted_tokens = all_trusted_tokens.get(chain, {})
@@ -138,7 +169,8 @@ class WhitelistOrchestrator:
         )
 
         # Query pools containing whitelisted or trusted tokens
-        all_tokens = whitelisted_tokens | trusted_token_addresses
+        # Include zero address for V4 native ETH pools
+        all_tokens = whitelisted_tokens | trusted_token_addresses | {zero_addr}
 
         # Get factory addresses for each protocol
         v2_factories = [
@@ -156,7 +188,10 @@ class WhitelistOrchestrator:
 
         # Query pools from database - get ALL pools where BOTH tokens are whitelisted
         # This includes Stage 1 (whitelisted+trusted) and Stage 2 (whitelisted+whitelisted)
-        all_tokens_for_query = whitelisted_tokens | trusted_token_addresses
+        # Include zero address for V4 pools with native ETH
+        all_tokens_for_query = (
+            whitelisted_tokens | trusted_token_addresses | {zero_addr}
+        )
 
         # Query pools from network_1_dex_pools_cryo (includes fee, tick_spacing and additional_data)
         query = """
@@ -430,9 +465,10 @@ class WhitelistOrchestrator:
                         continue
 
                     # tick_spacing is required for V3/V4 (needed for tick validation)
-                    if "tick_spacing" not in pool_data or pool_data[
-                        "tick_spacing"
-                    ] is None:
+                    if (
+                        "tick_spacing" not in pool_data
+                        or pool_data["tick_spacing"] is None
+                    ):
                         pool_id = pool_data.get("pool_id", pool_data.get("address"))
                         self.logger.warning(
                             f"Skipping {pool_data['protocol']} pool {pool_id}: "
