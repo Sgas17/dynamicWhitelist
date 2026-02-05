@@ -202,7 +202,7 @@ class WhitelistOrchestrator:
             LOWER(factory) as factory,
             fee,
             tick_spacing,
-            additional_data
+            additional_data::jsonb as additional_data
         FROM network_1_dex_pools_cryo
         WHERE (
             LOWER(asset0) = ANY($1) AND LOWER(asset1) = ANY($1)
@@ -503,7 +503,7 @@ class WhitelistOrchestrator:
                     async with WhitelistManager(db_config) as wl_manager:
                         # Publish differential update (Add/Remove/Full)
                         update_result = await wl_manager.publish_differential_update(
-                            chain=chain, new_pools=pools_for_nats
+                            chain=chain, new_pools=pools_for_nats, force_full=True  # Always send full list for now
                         )
 
                         self.logger.info(
